@@ -27,13 +27,14 @@
                 var title = $("<div/>", {class: "mdl-card__title mdl-card--expand", html: loading + "<h2 class='mdl-card__title-text'>" + data.name + "</h2>"});
                 var text = $("<div/>", {class: "mdl-card__supporting-text", html: "<div class='description'></div><div class='icons'></div>"});
                 var actions = $("<div/>", {class: "mdl-card__actions mdl-card--border", 
-                                            html: "<a class='thumbnail-button mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect'>" +
-                                                    "<i class='action fas fa-camera' title='Get thumbnail'></i>" + 
+                                            html: "<a class='thumbnail-button mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect' title='Take a new snapshot'>" +
+                                                    "<i class='action fas fa-camera'></i>" + 
                                                     "</a>" +
-                                                    "<a class='live-view-button mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect'>" +
-                                                    "<i class='action fas fa-eye' title='Live view'></i>" +
-                                                    "<a class='more-info-button mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect'>" +
-                                                    "<i class='action fas fa-ellipsis-h' title='More info'></i>" + 
+                                                    "<a class='live-view-button mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect' title='Start live view'>" +
+                                                    "<i class='action fas fa-eye'></i>" +
+                                                    "</a>" +
+                                                    "<a class='more-info-button mdl-button mdl-button--colored mdl-js-button mdl-js-ripple-effect' title='More info'>" +
+                                                    "<i class='action fas fa-ellipsis-h'></i>" + 
                                                     "</a><video controls></video>"                                                    
                                             });
                                             
@@ -187,7 +188,7 @@
             {
                 $(".content").html("");
                     
-                var slider = $("<input/>", {class: "mdl-slider mdl-js-slider", type: "range", id: "camera_slider", min: "320", max: "800", value: "320", step:"50"});
+                var slider = $("<input/>", {class: "mdl-slider mdl-js-slider", type: "range", id: "camera_slider", title: "Card size", min: "320", max: "800", value: "320", step:"50"});
                 slider.appendTo($(".content"));
                 slider.change(function()
                 {
@@ -336,7 +337,7 @@
                 var button = card.find(".live-view-button");
                 
                 button.attr("disabled", false);
-                button.removeClass("live");
+                button.removeClass("live").attr("title", "Start live view");
                 button.find(".action").removeClass("fa-eye-slash").addClass("fa-eye");
                 
                 video.hide();
@@ -357,7 +358,7 @@
                     var button = card.find(".live-view-button");
                     
                     button.attr("disabled", false);
-                    button.addClass("live");
+                    button.addClass("live").attr("title", "Stop live view");
                     button.find(".action").removeClass("fa-eye").addClass("fa-eye-slash");
                     
                     video.show();

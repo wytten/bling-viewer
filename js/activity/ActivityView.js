@@ -21,7 +21,7 @@
         onLogin : {
             value: function()
             {
-                var activity = $("<a/>", {class: "link", href: "#", html: "<i class='fas fa-running'></i>"});
+                var activity = $("<a/>", {class: "link", href: "#", title: "Activity", html: "<i class='fas fa-running'></i>"});
                 
                 activity.click(function(evt)
                 {
@@ -163,7 +163,7 @@
         renderActions : {
             value: function(data, type, row, meta)
             {
-                return '<div class="actions"><i class="download fas fa-download" data-path="' + data + '"></i></div>';
+                return '<div class="actions"><i class="download fas fa-download" title="Download video" data-path="' + data + '"></i></div>';
             },
             enumerable: false
         },

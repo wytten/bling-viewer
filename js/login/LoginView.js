@@ -51,7 +51,7 @@
                 $(".avatar-dropdown > span").html(data.email);
                 $("#login")[0].close();
                 
-                var dashboard = $("<a/>", {id: "dashboard", class: "link selected", href: "#", html: "<i class='fas fa-home'></i>"});
+                var dashboard = $("<a/>", {id: "dashboard", class: "link selected", href: "#", title: "Cameras", html: "<i class='fas fa-home'></i>"});
                 dashboard.appendTo($(".drawer .navigation"));
             },
             enumerable: false
