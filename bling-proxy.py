@@ -569,7 +569,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         with resp:
             data = resp.read()
-            self.send_response(resp.status)
+            self.log_request(resp.status, len(data))  # include the body size in the log
+            self.send_response_only(resp.status)
+            self.send_header("Server", self.version_string())
+            self.send_header("Date", self.date_time_string())
             for k, v in resp.headers.items():
                 if k.lower() in DROP_RESPONSE or k.lower().startswith("access-control-"):
                     continue
