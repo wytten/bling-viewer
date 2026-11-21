@@ -49,107 +49,140 @@
                                     "<div class='videoContainer'></div>");
                 
                 this.cameras = cameras;
-                
-                var i = 1;
-                
-                self.loadVideos(i, function()
+                this.clipCount = 0;
+                var sources = 2;  // cloud page 1 and Sync Module local storage
+                var page = 1;
+                var cloudMore = true;
+
+                // In the (white) video area: the clip column has a black background.
+                $(".videoContainer").html("<p class='empty'>Loading clips…</p>");
+
+                var sourceDone = function()
                 {
-                   $('ul.activity li:nth-child(1)').trigger( 'click');
-                });
+                    if(--sources > 0) return;
+                    if(self.clipCount == 0)
+                    {
+                        $(".videoContainer").html("<p class='empty'>No clips found in Blink's cloud storage or on a Sync Module.</p>");
+                    }
+                    else if(!$("ul.activity li.selected").length)
+                    {
+                        $("ul.activity li").first().trigger("click");
+                    }
+                };
+
+                self.loadVideos(page, function(more) { cloudMore = more; sourceDone(); });
+
+                self.presenter.getLocalClips(function(clips)
+                {
+                    $.each(clips, function(i, clip) { self.addClip(clip); });
+                }, sourceDone);
                 
                 $(".tableContainer").scroll(function()
                 {
-                    if(Math.round($(this)[0].scrollHeight - $(this).scrollTop()) === Math.round($(this).outerHeight()))
+                    if(cloudMore && Math.round($(this)[0].scrollHeight - $(this).scrollTop()) === Math.round($(this).outerHeight()))
                     {
-                        i++;
-                        self.loadVideos(i, function(){});
+                        page++;
+                        self.loadVideos(page, function(more) { cloudMore = more; });
                     }
                 });
             },
             enumerable: false
         },
+        // One page of cloud clips; done(moreAvailable).
         loadVideos : {
-            value: function(page, loaded)
+            value: function(page, done)
             {
                 self.presenter.getVideos(page, function(data)
                 {
-                    var events = [];
-
                     console.log("Activity page " + page + ":", data);
 
-                    var media = $.grep(data.media || [], function(v) { return !v.deleted; });
-                    if(page == 1 && media.length == 0)
+                    if(!data.media)
                     {
-                        // In the (white) video area: the clip column has a black background.
-                        $(".videoContainer").html("<p class='empty'>No clips in Blink's cloud storage for this account" +
-                            (data.media ? "" : " (unexpected response, see the browser console)") + ".</p>");
+                        self.showError({message: "Unexpected response for cloud clips (see the browser console)"});
                     }
 
-                    if(data.media != undefined)
+                    var media = $.grep(data.media || [], function(v) { return !v.deleted; });
+                    $.each(media, function(key, value)
                     {
-                        var ul = $("ul.activity");
-                       
-                        $.each( data.media, function( key, value )
-                        {
-                            if(!value.deleted)
+                        self.addClip({
+                            created_at: value.created_at,
+                            name: value.device_name || value.camera_name,  // newer API: device_name
+                            thumbnail: value.thumbnail + "_s.jpg",
+                            play: function(onUrl, onError)
                             {
-                                var icon = "";
-                                
-                                var name = value.device_name || value.camera_name;  // newer API: device_name
-
-                                for(var i = 0; i < self.cameras.length; ++i)
+                                self.presenter.getMedia(value.media, function(content)
                                 {
-                                    if(self.cameras[i].name == name)
-                                    {
-                                        icon = "<img class='icon' src=\"img/" + self.cameras[i].type + ".png\"/>";
-                                        break;
-                                    }
-                                }
-                                var cameraName = icon + name;
-                                
-                                var li = $("<li/>", {"data-path" : value.media, html: '<div class="thumbnail"><div class="loadingContainer"><div class="mdl-spinner mdl-spinner--single-color mdl-js-spinner is-active"></div></div></div>'});
-                                li.appendTo(ul);
-                                
-                                var time = $("<div/>", {html: moment(value.created_at).fromNow(), class: "timeVideo"});
-                                
-                                
-                                self.presenter.getMedia(value.thumbnail + "_s.jpg", function(content)
-                                {
-                                    var container = li.find(".thumbnail");
-                                    
-                                    container.html("");
-                                    
-                                    var thumbnail = $("<div/>", {class: "videoThumbnail"});
-                                    thumbnail.css("background-image", "url('data:image/png;base64," + content + "')");
-                                    
-                                    thumbnail.appendTo(container);
-                                    
-                                    time.prependTo(thumbnail);
-                                });
-                                
-                                li.on('click', function ()
-                                {
-                                    $(this).addClass('selected').siblings().removeClass('selected');
-                                    
-                                    $(".videoContainer").html("<div class=\"mdl-progress mdl-js-progress mdl-progress__indeterminate\"></div>");
-                                    
-                                    componentHandler.upgradeAllRegistered();
-                                    
-                                    var path = $(this).data("path");
-                                    
-                                    self.presenter.getMedia(path, function(content)
-                                    {
-                                        $(".videoContainer").html("<video controls autoplay><source type='video/mp4' src='data:video/mp4;base64," + content + "'></video>");
-                                    });
+                                    onUrl("data:video/mp4;base64," + content);
                                 });
                             }
                         });
-                        
-                        componentHandler.upgradeAllRegistered();
-                        
-                        loaded();
-                    }
+                    });
+
+                    done((data.media || []).length > 0);
+                },
+                function() { done(false); });
+            },
+            enumerable: false
+        },
+        // Add a clip to the list, keeping it newest first.
+        addClip : {
+            value: function(clip)
+            {
+                self.clipCount++;
+
+                var time = moment(clip.created_at);
+                var li = $("<li/>", {"data-time": time.valueOf(), title: (clip.name || "") + " – " + time.format("lll") +
+                                     (clip.local ? " (Sync Module local storage)" : ""),
+                                     html: '<div class="thumbnail"><div class="loadingContainer"><div class="mdl-spinner mdl-spinner--single-color mdl-js-spinner is-active"></div></div></div>'});
+
+                var later = $("ul.activity li").filter(function() { return +$(this).attr("data-time") < time.valueOf(); }).first();
+                if(later.length) li.insertBefore(later); else li.appendTo($("ul.activity"));
+
+                var label = $("<div/>", {class: "timeVideo", html: time.fromNow() + (clip.name ? "<br>" + $("<span/>").text(clip.name).html() : "")});
+                var showThumbnail = function(css)
+                {
+                    var container = li.find(".thumbnail");
+                    container.html("");
+                    var thumbnail = $("<div/>", {class: "videoThumbnail" + (clip.local ? " local" : "")});
+                    if(css) thumbnail.css("background-image", css);
+                    else thumbnail.html("<i class='fas fa-hdd' title='Sync Module local storage'></i>");
+                    thumbnail.appendTo(container);
+                    label.prependTo(thumbnail);
+                };
+
+                if(clip.thumbnail)
+                {
+                    self.presenter.getMedia(clip.thumbnail, function(content)
+                    {
+                        showThumbnail("url('data:image/png;base64," + content + "')");
+                    });
+                }
+                else
+                {
+                    showThumbnail(null);  // local clips have no thumbnail
+                }
+
+                li.on('click', function ()
+                {
+                    $(this).addClass('selected').siblings().removeClass('selected');
+
+                    $(".videoContainer").html("<div class=\"mdl-progress mdl-js-progress mdl-progress__indeterminate\"></div>" +
+                        (clip.local ? "<p class='empty'>Fetching clip from the Sync Module…</p>" : ""));
+                    componentHandler.upgradeAllRegistered();
+
+                    clip.play(function(src)
+                    {
+                        if(!li.hasClass("selected")) return;  // another clip was picked meanwhile
+                        $(".videoContainer").html($("<video controls autoplay/>").attr("src", src));
+                    },
+                    function(error)
+                    {
+                        $(".videoContainer").html("");
+                        self.showError(error);
+                    });
                 });
+
+                componentHandler.upgradeAllRegistered();
             },
             enumerable: false
         },

@@ -1,6 +1,7 @@
 # Bling viewer
 A web viewer for Blink Home Security cameras: thumbnails, battery and temperature for every camera
-on each network, live view, and a list of recorded clips to watch or download.
+on each network, live view, and recorded clips to watch, from Blink's cloud storage or a Sync
+Module's local (USB) storage.
 
 This fork runs without Bling Desktop.[^desktop] A small Python proxy, `bling-proxy.py`, serves the
 viewer and handles everything a browser can't do against Blink's servers by itself, so it works in
@@ -53,6 +54,10 @@ Besides the proxy, the viewer itself was updated for Blink's current API:
   reload doesn't need a new login. The same device ID is reused on later logins.
 * Thumbnails work with Blink's current formats (full `/api/v3/media/...` paths, or bare timestamps
   that need the camera's product type from the homescreen).
+* Activity also lists clips on Sync Module local storage (USB), merged newest first with any cloud
+  clips. The Sync Module is asked for its clip list when you open Activity, and a clip is uploaded
+  from the module when you select it, so expect a few seconds' wait for each (the same calls
+  blinkpy uses). Local clips have no thumbnails.
 * Live view uses Blink's v6 endpoint (v2 for Minis and doorbells) and the proxy instead of Bling
   Desktop.
 * Buttons and icons have tooltips.
@@ -80,8 +85,9 @@ No network or Blink account needed:
 * `tests/test_login.py` runs the `/auth/*` login endpoints against a fake Blink OAuth server,
   including 2FA and "Don't ask again on this computer".
 * `tests/test_activity.py` loads the real viewer in headless Chrome with Blink's API faked by
-  `tests/fake_blink.js`, opens Activity and checks what's drawn for clips, no clips, unexpected
-  responses and server errors (needs Google Chrome or Chromium).
+  `tests/fake_blink.js`, opens Activity and checks cloud clips, Sync Module local storage clips
+  (including a busy or failing module), both merged, no clips, unexpected responses and server
+  errors (needs Google Chrome or Chromium).
 
 Tests whose tools are missing are skipped.
 

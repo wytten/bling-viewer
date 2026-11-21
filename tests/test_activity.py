@@ -46,7 +46,7 @@ class ActivityTest(unittest.TestCase):
         try:
             dom = subprocess.run(
                 [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-                 f"--user-data-dir={profile}", "--virtual-time-budget=10000", "--dump-dom",
+                 f"--user-data-dir={profile}", "--virtual-time-budget=30000", "--dump-dom",
                  f"{self.base}/tests/activity_harness.html?fixture={fixture}"],
                 capture_output=True, text=True, timeout=90).stdout
         finally:
@@ -68,20 +68,70 @@ class ActivityTest(unittest.TestCase):
         # The newest clip is selected and its video fetched.
         self.assertIn("GET /api/v2/accounts/1/media/clip/101.mp4", r["requests"])
 
+    NO_CLIPS = "No clips found in Blink's cloud storage or on a Sync Module."
+
     def test_no_clips_says_so(self):
         # "empty" is Blink's real response for an account without cloud clips.
-        for fixture in ("empty", "deleted"):
+        for fixture in ("empty", "deleted", "localempty"):
             with self.subTest(fixture=fixture):
                 r = self.run_activity(fixture)
                 self.assertEqual(r["errors"], [])
                 self.assertEqual(r["items"], 0)
-                self.assertEqual(r["videoText"], "No clips in Blink's cloud storage for this account.")
+                self.assertEqual(r["videoText"], self.NO_CLIPS)
                 self.assertGreaterEqual(r["emptyContrast"], 3, f"message hard to see: {r['emptyColor']} on {r['emptyBackground']}")
 
     def test_unexpected_response_says_so(self):
         r = self.run_activity("nomedia")
         self.assertEqual(r["items"], 0)
-        self.assertIn("unexpected response", r["videoText"])
+        self.assertEqual(r["videoText"], self.NO_CLIPS)
+        self.assertEqual(r["toasts"], ["Unexpected response for cloud clips (see the browser console)"])
+
+    def local_requests(self, r):
+        prefix = "/api/v1/accounts/1/networks/1/sync_modules/5/local_storage"
+        return [q.replace(prefix, "LS") for q in r["requests"] if prefix in q]
+
+    def test_lists_and_plays_local_storage_clips(self):
+        r = self.run_activity("local")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["toasts"], [])
+        self.assertEqual(r["items"], 2)
+        self.assertEqual(r["localTiles"], 2)
+        # Newest first; manifest camera names ("Frontdoor") mapped back to real names.
+        self.assertTrue(r["clips"][0].startswith("Laundry – "), r["clips"])
+        self.assertTrue(r["clips"][1].startswith("Front door – "), r["clips"])
+        self.assertTrue(all(c.endswith("(Sync Module local storage)") for c in r["clips"]))
+        # Manifest requested, command polled until complete, manifest fetched; then the newest
+        # clip (5002) is uploaded on request and downloaded, and plays from a blob URL.
+        self.assertEqual(self.local_requests(r), [
+            "POST LS/manifest/request", "GET LS/manifest/request/900",
+            "POST LS/manifest/77/clip/request/5002", "GET LS/manifest/77/clip/request/5002"])
+        self.assertGreaterEqual(r["requests"].count("GET /network/1/command/900"), 2)
+        self.assertGreaterEqual(r["requests"].count("GET /network/1/command/901"), 2)
+        self.assertEqual(r["videoSrc"], "blob:...")
+        # The inactive Sync Module (network 2) is left alone.
+        self.assertFalse(any("sync_modules/6" in q for q in r["requests"]))
+
+    def test_busy_sync_module_is_retried(self):
+        r = self.run_activity("localbusy")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["items"], 2)
+        self.assertEqual(self.local_requests(r)[:3], [
+            "POST LS/manifest/request", "GET LS/manifest/request/900", "GET LS/manifest/request/900"])
+
+    def test_failed_sync_module_command_shows_toast(self):
+        r = self.run_activity("localfail")
+        self.assertEqual(r["items"], 0)
+        self.assertEqual(r["toasts"], ["Sync Module command failed (999)"])
+        self.assertEqual(r["videoText"], self.NO_CLIPS)
+
+    def test_cloud_and_local_clips_are_merged_newest_first(self):
+        r = self.run_activity("mixed")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["items"], 4)
+        names = [c.split(" – ")[0] + (" (local)" if c.endswith("storage)") else "") for c in r["clips"]]
+        # cloud 5 min, local 10 min, local 30 min, cloud 120 min
+        self.assertEqual(names, ["Front door", "Laundry (local)", "Front door (local)", "Laundry"])
+        self.assertEqual(r["videoSrc"], "data:...")  # newest (a cloud clip) selected
 
     def test_server_error_shows_toast(self):
         r = self.run_activity("error500")

@@ -22,21 +22,60 @@
         };
     };
 
+    // cloud: page 1 of media/changed (null = HTTP 500); local: Sync Module local storage behaviour.
+    var noCloud = {media: []};  // with the defaults below, exactly what Blink returned for an account without cloud clips
     var fixtures = {
-        empty: {media: []},  // with the defaults below, exactly what Blink returned for an account without cloud clips
-        clips: {media: [clip(101, 5, "Front door"), clip(102, 60, "Front door"), clip(103, 120, "Laundry")]},
-        deleted: {media: [$.extend(clip(104, 5, "Front door"), {deleted: true})]},
-        nomedia: {message: "unexpected"},
-        error500: null
+        empty: {cloud: noCloud},
+        clips: {cloud: {media: [clip(101, 5, "Front door"), clip(102, 60, "Front door"), clip(103, 120, "Laundry")]}},
+        deleted: {cloud: {media: [$.extend(clip(104, 5, "Front door"), {deleted: true})]}},
+        nomedia: {cloud: {message: "unexpected"}},
+        error500: {cloud: null},
+        local: {cloud: noCloud, local: "clips"},          // local storage only (the real-world case)
+        localbusy: {cloud: noCloud, local: "busy"},       // module busy: manifest not ready on first fetch
+        localempty: {cloud: noCloud, local: "empty"},
+        localfail: {cloud: noCloud, local: "fail"},       // manifest command fails
+        mixed: {cloud: {media: [clip(101, 5, "Front door"), clip(103, 120, "Laundry")]}, local: "clips"}
     };
-    var mediaPage1 = fixtures[fixtureName];
+    var fixture = fixtures[fixtureName];
+    var mediaPage1 = fixture.cloud;
+    var calls = {};
+    var count = function(key) { return calls[key] = (calls[key] || 0) + 1; };
+    var minutesAgo = function(n) { return new Date(Date.now() - n * 60000).toISOString(); };
+    var LS = "/api/v1/accounts/1/networks/1/sync_modules/5/local_storage";
 
     var routes = [
         [/\/user$/, {email: "test@example.com", temp_units: "f"}],
         [/\/api\/v1\/camera\/usage$/, {networks: [{network_id: 1, name: "Home",
             cameras: [{id: 10, name: "Front door"}, {id: 11, name: "Laundry"}]}]}],
-        [/\/api\/v3\/accounts\/1\/homescreen$/, {cameras: [{id: 10, type: "catalina", serial: "A1"},
-            {id: 11, type: "catalina", serial: "A2"}], owls: [], doorbells: []}],
+        [/\/api\/v3\/accounts\/1\/homescreen$/, {cameras: [{id: 10, name: "Front door", type: "catalina", serial: "A1"},
+            {id: 11, name: "Laundry", type: "catalina", serial: "A2"}], owls: [], doorbells: [],
+            sync_modules: fixture.local ? [
+                {id: 5, network_id: 1, local_storage_enabled: true, local_storage_compatible: true, local_storage_status: "active"},
+                {id: 6, network_id: 2, local_storage_enabled: false, local_storage_compatible: true, local_storage_status: "inactive"}
+            ] : [{id: 5, network_id: 1, local_storage_enabled: false, local_storage_compatible: true, local_storage_status: "inactive"}]}],
+        // --- Sync Module local storage ---
+        ["POST", new RegExp(LS + "/manifest/request$"), function()
+        {
+            return fixture.local == "fail" ? {id: 899, network_id: 1} : {id: 900, network_id: 1};
+        }],
+        [/\/network\/1\/command\/899$/, {complete: false, status_code: 999}],
+        [/\/network\/1\/command\/(900|901)$/, function(m)
+        {
+            return {complete: count("command" + m[1]) > 1, status_code: 908};  // not done on the first poll
+        }],
+        ["GET", new RegExp(LS + "/manifest/request/900$"), function()
+        {
+            if(fixture.local == "busy" && count("manifest") == 1) return {};
+            if(fixture.local == "empty") return {manifest_id: 77, clips: []};
+            return {manifest_id: 77, clips: [
+                {id: "5001", camera_name: "Frontdoor", created_at: minutesAgo(30), size: "1048576"},
+                {id: "5002", camera_name: "Laundry", created_at: minutesAgo(10), size: "2097152"}]};
+        }],
+        ["POST", new RegExp(LS + "/manifest/77/clip/request/(\\d+)$"), {id: 901, network_id: 1}],
+        ["GET", new RegExp(LS + "/manifest/77/clip/request/(\\d+)$"), function()
+        {
+            return new Blob(["fake mp4"], {type: "video/mp4"});
+        }],
         [/\/network\/1\/camera\/(\d+)$/, function(m) { return {camera_status: {camera_id: +m[1], network_id: 1,
             thumbnail: "1700000000", temperature: 60, battery_state: "ok", updated_at: new Date().toISOString()}}; }],
         [/\/network\/1$/, {network: {id: 1, name: "Home"}, devicestatus: [{id: 10, name: "Front door", type: "white"}]}],
@@ -60,14 +99,17 @@
     {
         var url = opts.url;
         report.requests.push((opts.type || "GET") + " " + url.replace(/^https:\/\/rest-u000\.immedia-semi\.com/, ""));
-        var reply = {status: 404, body: {message: "No fake for " + url}};
+        var method = (opts.type || "GET").toUpperCase();
+        var reply = {status: 404, body: {message: "No fake for " + method + " " + url}};
         for(var i = 0; i < routes.length; i++)
         {
-            var m = url.match(routes[i][0]);
+            var route = typeof routes[i][0] == "string" ? routes[i] : [null].concat(routes[i]);  // [method?, regex, reply]
+            if(route[0] && route[0] != method) continue;
+            var m = url.match(route[1]);
             if(m)
             {
-                var r = typeof routes[i][1] == "function" ? routes[i][1](m) : routes[i][1];
-                reply = (r && r.status) ? r : {status: 200, body: r};
+                var r = typeof route[2] == "function" ? route[2](m) : route[2];
+                reply = (r && r.status && !(r instanceof Blob)) ? r : {status: 200, body: r};
                 break;
             }
         }
@@ -83,7 +125,7 @@
 
     function waitFor(cond, then, tries)
     {
-        tries = tries === undefined ? 100 : tries;
+        tries = tries === undefined ? 400 : tries;
         if(cond()) then();
         else if(tries > 0) setTimeout(function() { waitFor(cond, then, tries - 1); }, 50);
         else { report.errors.push("timed out waiting"); finish(); }
@@ -107,6 +149,9 @@
     function finish()
     {
         report.items = $("ul.activity li").length;
+        report.clips = $("ul.activity li").map(function() { return $(this).attr("title"); }).get();
+        report.localTiles = $("ul.activity .videoThumbnail.local").length;
+        report.videoSrc = ($(".videoContainer video").attr("src") || "").replace(/^(blob|data):.*/, "$1:...");
         report.tableText = $.trim($(".tableContainer").text());
         report.videoText = $.trim($(".videoContainer").text());
         var empty = $(".content p.empty");
@@ -134,7 +179,13 @@
             var snackbar = $("#toast")[0].MaterialSnackbar;
             snackbar.showSnackbar = function(d) { report.toasts.push(d.message); };
             $(".drawer .navigation a[title=Activity]").click();
-            setTimeout(finish, 1500);
+            // Done when loading has finished and a clip is playing, a message is shown, or an error was toasted.
+            waitFor(function()
+            {
+                var text = $(".videoContainer").text();
+                return text.indexOf("Loading clips") < 0 && text.indexOf("Fetching clip") < 0 &&
+                       ($(".videoContainer video").length || $(".content p.empty").length || report.toasts.length);
+            }, function() { setTimeout(finish, 300); });
         });
     });
 })();

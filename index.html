@@ -111,6 +111,8 @@
         var credentials = {region: "", token: ""};
         // camera id -> {type: Blink product type ("catalina", "owl", ...), serial}, filled from homescreen
         var cameraInfo = $.Deferred();
+        // the full homescreen response (sync_modules etc.), {} if it failed
+        var homescreenData = $.Deferred();
 
         var g_user;
         

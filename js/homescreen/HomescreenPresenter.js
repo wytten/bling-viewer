@@ -25,6 +25,7 @@
                             info[c.id] = {type: c.type, serial: c.serial};
                         });
                         cameraInfo.resolve(info);
+                        homescreenData.resolve(data);
 
                         onSuccess(data);
 						
@@ -33,6 +34,7 @@
                     function(data)
                     {
                         cameraInfo.resolve({});
+                        homescreenData.resolve({});
                         self.view.showError(data);
                     }));
             },

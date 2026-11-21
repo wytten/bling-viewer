@@ -100,6 +100,87 @@
 				});
             },
             enumerable: false
+        },
+        // --- Sync Module local storage (same calls as blinkpy) ---
+        blink : {
+            value: function(type, path, binary, onSuccess, onError)
+            {
+				$.ajax
+				({
+					type: type,
+					url: "https://rest-" + credentials.region + "." + server + path,
+					dataType: binary ? undefined : 'json',
+					xhrFields: binary ? {responseType: 'blob'} : undefined,
+					beforeSend: function(xhr) {
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
+					},
+					success: function (data) { onSuccess(data); },
+					error: function (jqxhr, textStatus, error)
+					{
+						onError({message: "Sync Module request failed (" + jqxhr.status + (error ? " " + error : "") + ")"});
+					}
+				});
+            },
+            enumerable: false
+        },
+        localStoragePath : {
+            value: function(network, sync)
+            {
+				return "/api/v1/accounts/" + credentials.account.id + "/networks/" + network + "/sync_modules/" + sync + "/local_storage";
+            },
+            enumerable: false
+        },
+        // Poll a Blink command until it completes (status_code 908 = still valid).
+        waitCommand : {
+            value: function(network, command, onDone, onError, tries)
+            {
+				var self = this;
+				tries = tries === undefined ? 60 : tries;
+				this.blink("GET", "/network/" + network + "/command/" + command, false, function(status)
+				{
+					if(status.status_code && status.status_code != 908) onError({message: "Sync Module command failed (" + status.status_code + ")"});
+					else if(status.complete) onDone();
+					else if(tries <= 0) onError({message: "Sync Module didn't respond in time"});
+					else setTimeout(function() { self.waitCommand(network, command, onDone, onError, tries - 1); }, 1000);
+				}, onError);
+            },
+            enumerable: false
+        },
+        // Ask the Sync Module to list its clips, wait, then fetch the list (retrying while it's busy).
+        getLocalManifest : {
+            value: function(network, sync, onSuccess, onError)
+            {
+				var self = this, base = this.localStoragePath(network, sync);
+				this.blink("POST", base + "/manifest/request", false, function(req)
+				{
+					var fetch = function(retry)
+					{
+						self.blink("GET", base + "/manifest/request/" + req.id, false, function(manifest)
+						{
+							if(manifest && manifest.clips) onSuccess(manifest);
+							else if(retry >= 3) onError({message: "Sync Module didn't return its clip list"});
+							else setTimeout(function() { fetch(retry + 1); }, 3000 * Math.pow(2, retry));
+						}, onError);
+					};
+					self.waitCommand(req.network_id || network, req.id, function() { fetch(0); }, onError);
+				}, onError);
+            },
+            enumerable: false
+        },
+        // Have the Sync Module upload one clip, wait, then download it as a Blob.
+        getLocalClip : {
+            value: function(network, sync, manifest, clip, onSuccess, onError)
+            {
+				var self = this, path = this.localStoragePath(network, sync) + "/manifest/" + manifest + "/clip/request/" + clip;
+				this.blink("POST", path, false, function(req)
+				{
+					self.waitCommand(req.network_id || network, req.id, function()
+					{
+						self.blink("GET", path, true, onSuccess, onError);
+					}, onError);
+				}, onError);
+            },
+            enumerable: false
         }
     });
 

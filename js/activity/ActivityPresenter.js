@@ -55,7 +55,7 @@
             enumerable: false
         },
         getVideos : {
-            value: function(page, callback)
+            value: function(page, callback, onError)
             {
                 var self = this;
                 
@@ -68,7 +68,58 @@
                     function(data)
                     {
                         self.activityView.showError(data);
+                        if(onError) onError(data);
                     }));
+            },
+            enumerable: false
+        },
+        // Clips on Sync Module local storage (USB). Calls onClips(list) per module, then onDone().
+        // Each clip: {created_at, name, local: true, play(onUrl, onError)}.
+        getLocalClips : {
+            value: function(onClips, onDone)
+            {
+                var self = this;
+
+                homescreenData.done(function(home)
+                {
+                    var modules = $.grep(home.sync_modules || [], function(m) { return m.local_storage_status == "active"; });
+                    var pending = modules.length;
+                    if(!pending) { onDone(); return; }
+
+                    // The manifest names cameras without spaces/punctuation ("Frontdoor").
+                    var names = {};
+                    $.each([].concat(home.cameras || [], home.owls || [], home.doorbells || []), function(i, c)
+                    {
+                        if(c.name) names[c.name.replace(/[^A-Za-z0-9]/g, "")] = c.name;
+                    });
+                    var finished = function() { if(--pending == 0) onDone(); };
+
+                    $.each(modules, function(i, m)
+                    {
+                        self.interactor.getLocalManifest(m.network_id, m.id, function(manifest)
+                        {
+                            onClips($.map(manifest.clips, function(c)
+                            {
+                                return {
+                                    created_at: c.created_at,
+                                    name: names[c.camera_name] || c.camera_name,
+                                    local: true,
+                                    play: function(onUrl, onError)
+                                    {
+                                        self.interactor.getLocalClip(m.network_id, m.id, manifest.manifest_id, c.id,
+                                            function(blob) { onUrl(URL.createObjectURL(blob)); }, onError);
+                                    }
+                                };
+                            }));
+                            finished();
+                        },
+                        function(error)
+                        {
+                            self.activityView.showError(error);
+                            finished();
+                        });
+                    });
+                });
             },
             enumerable: false
         },

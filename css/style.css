@@ -427,3 +427,19 @@
       color: #555;
       font-size: 16px;
   }
+
+  /* Sync Module (local storage) clips have no thumbnail: show a storage icon instead */
+  .content .videoThumbnail.local
+  {
+      position: relative;
+      background-color: #2b2b2b;
+  }
+
+  .content .videoThumbnail.local > i
+  {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      font-size: 28px;
+      color: #777;
+  }
