@@ -146,6 +146,14 @@
                     var thumbnail = $("<div/>", {class: "videoThumbnail" + (clip.local ? " local" : "")});
                     if(css) thumbnail.css("background-image", css);
                     else thumbnail.html("<i class='fas fa-hdd' title='Sync Module local storage'></i>");
+                    if(clip.local)
+                    {
+                        $("<i class='download fas fa-download' title='Download clip'></i>").appendTo(thumbnail).click(function(evt)
+                        {
+                            evt.stopPropagation();  // don't also play it
+                            self.downloadClip(clip, $(this));
+                        });
+                    }
                     thumbnail.appendTo(container);
                     label.prependTo(thumbnail);
                 };
@@ -209,6 +217,31 @@
             value: function(data, type, row, meta)
             {
                 return '<div class="actions"><i class="download fas fa-download" title="Download video" data-path="' + data + '"></i></div>';
+            },
+            enumerable: false
+        },
+        // Save a clip as "<camera> <date time>.mp4".
+        downloadClip : {
+            value: function(clip, icon)
+            {
+                if(icon.hasClass("fa-spinner")) return;  // already fetching
+                icon.removeClass("fa-download").addClass("fa-spinner fa-spin").attr("title", "Fetching clip from the Sync Module…");
+                var restore = function() { icon.removeClass("fa-spinner fa-spin").addClass("fa-download").attr("title", "Download clip"); };
+
+                clip.play(function(url)
+                {
+                    var name = ((clip.name || "Blink") + " " + moment(clip.created_at).format("YYYY-MM-DD HH.mm.ss"))
+                        .replace(/[\\/:*?"<>|]+/g, "_") + ".mp4";
+                    var a = $("<a/>", {href: url, download: name}).appendTo("body");
+                    a[0].click();
+                    a.remove();
+                    restore();
+                },
+                function(error)
+                {
+                    restore();
+                    self.showError(error);
+                });
             },
             enumerable: false
         },

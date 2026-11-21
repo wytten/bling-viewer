@@ -41,13 +41,13 @@ class ActivityTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
 
-    def run_activity(self, fixture):
+    def run_activity(self, fixture, action=""):
         profile = tempfile.mkdtemp(prefix="bling-activity-test-")
         try:
             dom = subprocess.run(
                 [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                  f"--user-data-dir={profile}", "--virtual-time-budget=30000", "--dump-dom",
-                 f"{self.base}/tests/activity_harness.html?fixture={fixture}"],
+                 f"{self.base}/tests/activity_harness.html?fixture={fixture}&action={action}"],
                 capture_output=True, text=True, timeout=90).stdout
         finally:
             shutil.rmtree(profile, ignore_errors=True)
@@ -110,6 +110,24 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual(r["videoSrc"], "blob:...")
         # The inactive Sync Module (network 2) is left alone.
         self.assertFalse(any("sync_modules/6" in q for q in r["requests"]))
+
+    def test_download_local_clips(self):
+        r = self.run_activity("local", action="download")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["toasts"], [])
+        names = sorted(d["name"] for d in r["downloads"])
+        self.assertEqual(len(names), 2, r["downloads"])
+        self.assertRegex(names[0], r"^Front door \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d\.mp4$")
+        self.assertRegex(names[1], r"^Laundry \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d\.mp4$")
+        self.assertTrue(all(d["href"] == "blob" for d in r["downloads"]))
+        # Laundry (5002) was already fetched to play it, so only Front door (5001) is requested now.
+        after = [q for q in r["requests"][r["requestsBeforeDownload"]:] if "clip/request" in q]
+        self.assertEqual([q.rsplit("/", 1)[1] for q in after], ["5001", "5001"])  # POST then GET
+        self.assertTrue(r["selected"].startswith("Laundry – "), r["selected"])  # download clicks didn't switch clips
+
+    def test_cloud_clips_have_no_download_icon(self):
+        r = self.run_activity("clips", action="download")
+        self.assertEqual(r["downloads"], [])
 
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")

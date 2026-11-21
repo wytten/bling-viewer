@@ -443,3 +443,18 @@
       font-size: 28px;
       color: #777;
   }
+
+  .content .videoThumbnail.local > i.download
+  {
+      bottom: auto;
+      top: 8px;
+      right: 8px;
+      font-size: 18px;
+      color: #ddd;
+      cursor: pointer;
+  }
+
+  .content .videoThumbnail.local > i.download:hover
+  {
+      color: #fff;
+  }

@@ -59,7 +59,8 @@ Besides the proxy, the viewer itself was updated for Blink's current API:
 * Activity also lists clips on Sync Module local storage (USB), merged newest first with any cloud
   clips. The Sync Module is asked for its clip list when you open Activity, and a clip is uploaded
   from the module when you select it, so expect a few seconds' wait for each (the same calls
-  blinkpy uses). Local clips have no thumbnails.
+  blinkpy uses). Local clips have no thumbnails; the download icon on a local clip saves it as
+  `<camera> <date time>.mp4` (a clip already fetched for playing isn't uploaded again).
 * Live view uses Blink's v6 endpoint (v2 for Minis and doorbells) and the proxy instead of Bling
   Desktop.
 * Buttons and icons have tooltips.

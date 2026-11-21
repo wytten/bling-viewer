@@ -3,8 +3,18 @@
 // responses, opens the Activity pane and reports what it drew in #test-result.
 (function()
 {
-    var fixtureName = new URLSearchParams(location.search).get("fixture") || "empty";
-    var report = {fixture: fixtureName, requests: [], toasts: [], errors: []};
+    var params = new URLSearchParams(location.search);
+    var fixtureName = params.get("fixture") || "empty";
+    var action = params.get("action");  // "download": click every local clip's download icon
+    var report = {fixture: fixtureName, requests: [], toasts: [], errors: [], downloads: []};
+
+    // Record downloads (<a download> clicks) instead of saving files.
+    var anchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function()
+    {
+        if(this.hasAttribute("download")) report.downloads.push({name: this.download, href: this.href.split(":")[0]});
+        else anchorClick.call(this);
+    };
 
     window.addEventListener("error", function(e) { report.errors.push(String(e.message)); });
     var consoleError = console.error;
@@ -151,6 +161,7 @@
         report.items = $("ul.activity li").length;
         report.clips = $("ul.activity li").map(function() { return $(this).attr("title"); }).get();
         report.localTiles = $("ul.activity .videoThumbnail.local").length;
+        report.selected = $("ul.activity li.selected").attr("title") || null;
         report.videoSrc = ($(".videoContainer video").attr("src") || "").replace(/^(blob|data):.*/, "$1:...");
         report.tableText = $.trim($(".tableContainer").text());
         report.videoText = $.trim($(".videoContainer").text());
@@ -185,7 +196,15 @@
                 var text = $(".videoContainer").text();
                 return text.indexOf("Loading clips") < 0 && text.indexOf("Fetching clip") < 0 &&
                        ($(".videoContainer video").length || $(".content p.empty").length || report.toasts.length);
-            }, function() { setTimeout(finish, 300); });
+            }, function()
+            {
+                if(action != "download") { setTimeout(finish, 300); return; }
+                report.requestsBeforeDownload = report.requests.length;
+                var icons = $(".videoThumbnail.local .download");
+                icons.each(function() { $(this).click(); });
+                waitFor(function() { return report.downloads.length >= icons.length || report.toasts.length; },
+                        function() { setTimeout(finish, 300); });
+            });
         });
     });
 })();

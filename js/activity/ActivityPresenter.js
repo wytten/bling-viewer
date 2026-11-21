@@ -100,14 +100,30 @@
                         {
                             onClips($.map(manifest.clips, function(c)
                             {
+                                // Fetch once (the module uploads the clip each time it's requested);
+                                // play and download share the result.
+                                var url = null, waiting = null;
                                 return {
                                     created_at: c.created_at,
                                     name: names[c.camera_name] || c.camera_name,
                                     local: true,
                                     play: function(onUrl, onError)
                                     {
+                                        if(url) { onUrl(url); return; }
+                                        if(waiting) { waiting.push([onUrl, onError]); return; }
+                                        waiting = [[onUrl, onError]];
                                         self.interactor.getLocalClip(m.network_id, m.id, manifest.manifest_id, c.id,
-                                            function(blob) { onUrl(URL.createObjectURL(blob)); }, onError);
+                                            function(blob)
+                                            {
+                                                url = URL.createObjectURL(blob);
+                                                var w = waiting; waiting = null;
+                                                $.each(w, function(i, cb) { cb[0](url); });
+                                            },
+                                            function(error)
+                                            {
+                                                var w = waiting; waiting = null;
+                                                $.each(w, function(i, cb) { cb[1](error); });
+                                            });
                                     }
                                 };
                             }));
