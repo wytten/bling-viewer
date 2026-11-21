@@ -189,7 +189,10 @@
                 $(".content").html("");
                     
                 var slider = $("<input/>", {class: "mdl-slider mdl-js-slider", type: "range", id: "camera_slider", title: "Card size", min: "320", max: "800", value: "320", step:"50"});
-                slider.appendTo($(".content"));
+                var sizer = $("<div/>", {id: "card-size"});
+                $("<label/>", {for: "camera_slider", text: "Card size"}).appendTo(sizer);
+                slider.appendTo(sizer);
+                sizer.appendTo($(".content"));
                 slider.change(function()
                 {
                     var value = $(this).val();

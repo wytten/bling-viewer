@@ -287,11 +287,27 @@
     background-position: center center; 
 }
 
-.content .mdl-slider__container
+#card-size
 {
     position:fixed;
     right: 5px;
     bottom: 15px;
+    display: flex;
+    align-items: center;
+}
+
+#card-size label
+{
+    margin-left: 20px;
+    font-size: 13px;
+    color: rgba(0,0,0,.54);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+#card-size .mdl-slider__container
+{
+    width: 160px;
 }
 
 .demo-card-square .advanced
