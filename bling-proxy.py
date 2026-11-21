@@ -36,7 +36,8 @@ BLING_PUBLIC=1 is for a proxy anyone can reach: it saves no email and no remembe
 computer, so every new sign-in needs Blink's 2FA pin.
 
 Usage: bling-proxy.py [port]   (default 3000, listens on 127.0.0.1)
-       BLING_PROXY_DEBUG=1 bling-proxy.py   also logs small JSON response bodies
+       BLING_PROXY_DEBUG=1 bling-proxy.py   also logs small JSON response bodies, and
+                                            each login step (no passwords or tokens)
 """
 import base64
 import hashlib
@@ -152,17 +153,44 @@ class CsrfParser(HTMLParser):
 
 def fetch(op, url, data=None, headers=None, method=None):
     """Make a request; return (status, headers, body) without raising on non-2xx."""
+    fields = list(data) if isinstance(data, dict) else None
     if isinstance(data, dict):
         data = urlencode(data).encode()
     req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
     try:
         with op.open(req, timeout=30) as r:
-            return r.status, r.headers, r.read()
+            result = r.status, r.headers, r.read()
     except urllib.error.HTTPError as e:
         with e:
-            return e.code, e.headers, e.read()
+            result = e.code, e.headers, e.read()
     except Exception as e:
         raise ApiError(f"Cannot reach Blink: {e}", 502)
+    if DEBUG:
+        debug_fetch(req, fields, *result)
+    return result
+
+
+SECRET_FIELD = re.compile(r'("?(?:access_token|refresh_token|id_token|token|password|code|'
+                          r'csrf-token|csrf_token)"?\s*[:=]\s*"?)[^",&\s<]+', re.I)
+
+
+def debug_fetch(req, fields, status, headers, body):
+    """BLING_PROXY_DEBUG: one login step, without secrets (form values, tokens, codes)."""
+    u = urlsplit(req.full_url)
+    line = f"debug {req.get_method()} {u.scheme}://{u.netloc}{u.path} -> {status}"
+    if fields:
+        line += f" (sent {', '.join(fields)})"
+    if headers.get("Location"):
+        loc = urlsplit(headers["Location"])
+        line += f" Location: {loc.scheme}://{loc.netloc}{loc.path}{'?…' if loc.query else ''}"
+    cookies = [c.split("=", 1)[0] for c in headers.get_all("Set-Cookie") or []]
+    if cookies:
+        line += f" cookies: {', '.join(cookies)}"
+    ctype = headers.get("Content-Type") or ""
+    line += f" [{ctype or 'no type'}, {len(body)} bytes]"
+    if req.full_url != OAUTH_TOKEN and body and ("json" in ctype or status >= 400):
+        line += " " + SECRET_FIELD.sub(r"\1…", body[:600].decode("utf-8", "replace")).replace("\n", " ")
+    print(line, file=sys.stderr, flush=True)
 
 
 def as_json(body):
@@ -312,7 +340,8 @@ class OAuthLogin:
         if status == 412 or (status == 202 and (resp.get("tsv_state") or resp.get("tsv_methods")
                                                  or resp.get("next_time_in_secs"))):
             return None
-        raise ApiError(resp.get("message") or f"Blink rejected the sign-in ({status}); check email and password")
+        raise ApiError(resp.get("message") or resp.get("error_description")
+                       or f"Blink rejected the sign-in ({status}); check email and password")
 
     def verify(self, pin, remember=False):
         status, _, body = fetch(self.follow, OAUTH_2FA_VERIFY, {
