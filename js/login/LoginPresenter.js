@@ -65,9 +65,14 @@
             value: function()
             {
                 var self = this;
+                var user = this.interactor.getLastUser();
+                if(user) this.loginView.prefillUser(user);
+                // The proxy also remembers it (for incognito windows, which lose localStorage),
+                // except when it is public, where it keeps no email and remembers no computer.
                 this.interactor.getLastLogin(function(data)
                 {
-                    if(data && data.email) self.loginView.prefillUser(data.email);
+                    if(data && data.public) self.loginView.hideRemember();
+                    else if(data && data.email && !user) self.loginView.prefillUser(data.email);
                 });
             },
             enumerable: false
@@ -87,6 +92,7 @@
                     expires_at: Date.now() + (data.expires_in || 3600) * 1000
                 };
                 this.interactor.setToken(stored);
+                this.interactor.setLastUser(user);
                 this.applyToken(stored);
 
                 clearTimeout(this.refreshTimer);

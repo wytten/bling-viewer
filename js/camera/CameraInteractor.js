@@ -216,7 +216,7 @@
 					$.ajax
 					({
 						type: "POST",
-						url: "/live/start",
+						url: "live/start",
 						data: JSON.stringify({
 							camera_id: camera, network_id: live.network_id, serial: (info[camera] || {}).serial,
 							server: live.server, command_id: live.command_id, polling_interval: live.polling_interval,
@@ -243,7 +243,7 @@
 				$.ajax
 				({
 					type: "POST",
-					url: "/live/stop",
+					url: "live/stop",
 					data: JSON.stringify({camera_id: camera}),
 					dataType: 'json',
 					contentType: 'application/json',

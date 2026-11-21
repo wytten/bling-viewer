@@ -161,7 +161,7 @@ class LiveViewTest(unittest.TestCase):
         fake.start()
         status, resp = self.post("/live/start", self.start_request(fake))
         self.assertEqual(status, 200, resp)
-        self.assertEqual(resp, {"camera_id": 555, "url": "/live/555/index.m3u8"})
+        self.assertEqual(resp, {"camera_id": 555, "url": "live/555/index.m3u8"})
 
         # The proxy authenticated the way Blink expects.
         self.assertEqual(fake.header, bp.immis_auth_header("G8T1ABCDEF", "42", "CONN1234567890"))
@@ -170,7 +170,7 @@ class LiveViewTest(unittest.TestCase):
         segments = []
 
         def have_segments():
-            status, ctype, body = self.get(resp["url"])
+            status, ctype, body = self.get("/" + resp["url"])
             segments[:] = [l for l in body.decode().splitlines() if l and not l.startswith("#")]
             return status == 200 and len(segments) >= 2
 
@@ -194,7 +194,7 @@ class LiveViewTest(unittest.TestCase):
         self.assertFalse(os.path.exists(stream.dir))
         self.assertIsNotNone(stream.ffmpeg.poll(), "ffmpeg still running")
         self.assertTrue(fake.closed.wait(5), "stream connection not closed")
-        self.assertEqual(self.get(resp["url"])[0], 404)
+        self.assertEqual(self.get("/" + resp["url"])[0], 404)
 
     def test_idle_stream_stops(self):
         bp.LIVE_IDLE = 2

@@ -49,7 +49,7 @@
         <div class="drawer">
           <nav class="navigation"></nav>
 		  <div id="version">
-			<div class="viewer"><div class="title">viewer</div><div class="number">0.1.26</div></div>
+			<div class="viewer"><div class="title">viewer</div><div class="number" title="git commit"></div></div>
 		  </div>
         </div>
         <div class="content"></div>
@@ -99,14 +99,26 @@
     </body>
     <script>
         // When served by bling-proxy.py, route cross-origin requests through it
-        // ("/https://host/path") so CORS is handled without --disable-web-security.
-        $.ajaxPrefilter(function( options ){
+        // ("<dir>/https://host/path") so CORS is handled without --disable-web-security.
+        // The proxy's own URLs are relative to the page too, so the viewer works both at
+        // the root (bling.sh) and under a path such as /blink/ behind a reverse proxy.
+        var proxyBase = location.pathname.replace(/[^\/]*$/, "");
+        $.ajaxPrefilter(function( options, originalOptions, jqXHR ){
             if (/^https?:$/.test(location.protocol) && /^https?:\/\//.test(options.url)
                 && options.url.indexOf(location.origin + "/") !== 0) {
-                options.url = "/" + options.url;
+                options.url = proxyBase + options.url;
+                // Blink's token goes to the proxy as X-Blink-Authorization, leaving
+                // Authorization free for basic auth on a reverse proxy in front of it.
+                var set = jqXHR.setRequestHeader;
+                jqXHR.setRequestHeader = function(name, value) {
+                    return set.call(this, /^authorization$/i.test(name) ? "X-Blink-Authorization" : name, value);
+                };
             }
         });
     
+        // Short git commit id of the viewer, from bling-proxy.py
+        $.get("version", function(v){ $("#version .number").text(v); });
+
         var server = "immedia-semi.com";
         var credentials = {region: "", token: ""};
         // camera id -> {type: Blink product type ("catalina", "owl", ...), serial}, filled from homescreen

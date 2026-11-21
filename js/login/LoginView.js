@@ -57,6 +57,14 @@
             enumerable: false
         },
 		// Fill in the last login name (unless something was typed already) and go to the password.
+		hideRemember : {
+            value: function()
+            {
+                var box = $("#login .remember").prop("checked", false);
+                box.closest("label").hide();
+            },
+            enumerable: false
+        },
 		prefillUser : {
             value: function(email)
             {

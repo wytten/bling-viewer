@@ -48,6 +48,23 @@ You can also run the proxy by hand: `./bling-proxy.py [port]` (default 3000, lis
 
 It uses only the Python standard library.
 
+### Behind a reverse proxy
+The viewer can also be served under a path, e.g. `https://example.com/blink/` with Apache
+forwarding `/blink/` to the proxy on `127.0.0.1`. Its URLs are relative to the page, and the
+proxy prefixes relayed redirects with the `X-Forwarded-Prefix` header if the reverse proxy sets
+one. The page sends Blink's token to the proxy as `X-Blink-Authorization`, so `Authorization` is
+free for basic auth on the reverse proxy; the proxy never forwards that, or `X-Forwarded-*`, to
+Blink. Serve it over HTTPS.
+
+If anyone can reach it, run the proxy with `BLING_PUBLIC=1`. Otherwise it would fill in the last
+email that signed in for every visitor, and its remembered device cookies would let a correct
+password skip the 2FA PIN. Public, it saves neither and the page hides **Don't ask again on this
+computer**, so Blink's own sign-in, with its PIN, is the only login. Either way the page also
+remembers the last email itself, in the browser's `localStorage`.
+
+The drawer shows the short git commit the viewer is running from (`GET /version`). A copy deployed
+without `.git` can provide it in a `VERSION` file.
+
 ## Changes from upstream
 Besides the proxy, the viewer itself was updated for Blink's current API:
 
@@ -91,6 +108,9 @@ No network or Blink account needed:
   and `openssl`).
 * `tests/test_login.py` runs the `/auth/*` login endpoints against a fake Blink OAuth server,
   including 2FA and "Don't ask again on this computer".
+* `tests/test_relay.py` checks what reaches Blink through the relay (basic auth and
+  `X-Forwarded-*` dropped, the token mapped from `X-Blink-Authorization`), redirects under a
+  prefix, and `/version`.
 * `tests/test_activity.py` loads the real viewer in headless Chrome with Blink's API faked by
   `tests/fake_blink.js`, opens Activity and checks cloud clips, Sync Module local storage clips
   (including a busy or failing module), both merged, no clips, unexpected responses and server

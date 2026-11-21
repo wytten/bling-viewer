@@ -178,7 +178,7 @@ class LoginTest(unittest.TestCase):
 
         self.saved = {k: getattr(bp, k) for k in
                       ("OAUTH_BASE", "OAUTH_AUTHORIZE", "OAUTH_SIGNIN", "OAUTH_2FA_VERIFY",
-                       "OAUTH_TOKEN", "TIER_INFO", "REMEMBER_DIR")}
+                       "OAUTH_TOKEN", "TIER_INFO", "REMEMBER_DIR", "PUBLIC")}
         bp.OAUTH_BASE = base
         bp.OAUTH_AUTHORIZE = base + "/oauth/v2/authorize"
         bp.OAUTH_SIGNIN = base + "/oauth/v2/signin"
@@ -344,6 +344,21 @@ class LoginTest(unittest.TestCase):
         self.login(remember=True)
         os.remove(os.path.join(bp.REMEMBER_DIR, "last-login.json"))  # e.g. remembered before last-login existed
         self.assertEqual(self.get("/auth/last-login"), {"email": EMAIL})
+
+    def test_public_keeps_no_email_and_remembers_no_computer(self):
+        bp.PUBLIC = True
+        _, asked = self.login(remember=True)
+        self.assertTrue(asked)
+        _, asked = self.login(remember=True)
+        self.assertTrue(asked, "PIN skipped on a public proxy")
+        self.assertEqual(self.get("/auth/last-login"), {"public": True})
+        self.assertFalse(os.path.exists(bp.REMEMBER_DIR), "something saved on a public proxy")
+
+    def test_public_ignores_a_device_remembered_before(self):
+        self.login(remember=True)
+        bp.PUBLIC = True
+        _, asked = self.login()
+        self.assertTrue(asked)
 
     def test_expired_or_unknown_session(self):
         status, r = self.post("/auth/verify", {"session": "nope", "pin": PIN})

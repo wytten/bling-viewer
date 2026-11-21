@@ -16,6 +16,10 @@ under ~/.config/bling-viewer/ (BLING_REMEMBER_DIR overrides) so later logins wit
 same email can skip the 2FA pin.
   POST /auth/refresh  {refresh_token, hardware_id}    -> tokens
   GET  /auth/last-login                               -> {email} of the last sign-in, or {}
+                                                         ({public: true} with BLING_PUBLIC=1)
+
+GET /version returns the short git commit id the viewer is running from (from a VERSION
+file if there is one, e.g. in a copy deployed without .git), shown in the drawer.
 
 "tokens" is {access_token, refresh_token, expires_in, hardware_id, tier, account_id}.
 
@@ -24,6 +28,12 @@ POST /live/start {camera_id, network_id, serial, server, command_id, polling_int
 token, region} connects to that stream, pipes it through ffmpeg (required for live
 view) and returns {url} of an HLS playlist served from /live/<camera_id>/.
 POST /live/stop {camera_id} ends it; streams also stop when the player goes idle.
+
+Behind a reverse proxy the viewer can live under a path (e.g. /blink/): its URLs are
+relative to the page, and the proxy prefixes relayed redirects with X-Forwarded-Prefix.
+
+BLING_PUBLIC=1 is for a proxy anyone can reach: it saves no email and no remembered
+computer, so every new sign-in needs Blink's 2FA pin.
 
 Usage: bling-proxy.py [port]   (default 3000, listens on 127.0.0.1)
        BLING_PROXY_DEBUG=1 bling-proxy.py   also logs small JSON response bodies
@@ -58,7 +68,8 @@ DEBUG = bool(os.environ.get("BLING_PROXY_DEBUG"))
 ALLOWED_HOST = re.compile(r"(^|\.)immedia-semi\.com$")
 
 DROP_REQUEST = {"host", "origin", "referer", "connection", "accept-encoding",
-                "content-length", "keep-alive", "upgrade", "te"}
+                "content-length", "keep-alive", "upgrade", "te",
+                "authorization", "x-blink-authorization"}  # see Handler.relay
 DROP_RESPONSE = {"connection", "transfer-encoding", "keep-alive", "content-length",
                  "content-encoding", "upgrade"}
 
@@ -101,6 +112,10 @@ PENDING_TTL = 600  # seconds a login may wait for its 2FA pin
 # kept by the proxy (the browser may be incognito) so later logins can skip the 2FA pin.
 REMEMBER_DIR = os.environ.get("BLING_REMEMBER_DIR") or os.path.join(
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "bling-viewer")
+# Public (BLING_PUBLIC=1, for a proxy anyone can reach): keep no email and remember no
+# computer, so neither the last sign-in nor a 2FA bypass is there for any visitor.
+# The page keeps the last email itself, in localStorage.
+PUBLIC = os.environ.get("BLING_PUBLIC") == "1"
 pending = {}       # session id -> OAuthLogin awaiting 2FA
 pending_lock = threading.Lock()
 
@@ -192,6 +207,8 @@ def _remember_paths():
 
 def remembered_device(email):
     """The saved device for this email, or None."""
+    if PUBLIC:
+        return None
     device_file, _ = _remember_paths()
     try:
         with open(device_file) as f:
@@ -241,6 +258,8 @@ class OAuthLogin:
 
     def remember(self):
         """Save hardware_id and Blink's persistent cookies (owner-only files)."""
+        if PUBLIC:
+            return
         os.makedirs(REMEMBER_DIR, mode=0o700, exist_ok=True)
         device_file, cookie_file = _remember_paths()
         old = os.umask(0o077)
@@ -321,12 +340,29 @@ class OAuthLogin:
             "scope": OAUTH_SCOPE})
 
 
+def viewer_version(root):
+    """Short git commit id of the viewer: VERSION if present, else git, else "unknown"."""
+    try:
+        with open(os.path.join(root, "VERSION")) as f:
+            return f.read().strip() or "unknown"
+    except OSError:
+        pass
+    try:
+        out = subprocess.run(["git", "-C", root, "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 def _last_login_path():
     return os.path.join(REMEMBER_DIR, "last-login.json")
 
 
 def save_last_login(email):
     """Remember the last email that signed in, to prefill the login form."""
+    if PUBLIC:
+        return
     os.makedirs(REMEMBER_DIR, mode=0o700, exist_ok=True)
     old = os.umask(0o077)
     try:
@@ -337,6 +373,8 @@ def save_last_login(email):
 
 
 def auth_last_login(req=None):
+    if PUBLIC:
+        return {"public": True}
     email = None
     for path in (_last_login_path(), _remember_paths()[0]):  # fall back to a remembered device
         try:
@@ -576,7 +614,7 @@ def live_start(req):
     with streams_lock:
         streams[stream.camera_id] = stream
     stream.start()
-    return {"camera_id": int(stream.camera_id), "url": f"/live/{stream.camera_id}/index.m3u8"}
+    return {"camera_id": int(stream.camera_id), "url": f"live/{stream.camera_id}/index.m3u8"}
 
 
 def live_stop(req):
@@ -592,7 +630,11 @@ JSON_ROUTES = dict(AUTH_ROUTES, **{"/live/start": live_start, "/live/stop": live
 
 class Handler(SimpleHTTPRequestHandler):
     def _is_relay(self):
-        return re.match(r"^/https?://", self.path) is not None
+        return re.match(r"^/https?:/", self.path) is not None
+
+    def _relay_url(self):
+        # A reverse proxy may merge the "//" after the scheme (Apache's MergeSlashes).
+        return re.sub(r"^/(https?):/+", r"\1://", self.path)
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -605,6 +647,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.relay()
         elif self.path == "/auth/last-login":
             self.json_route(auth_last_login)
+        elif self.path == "/version":
+            self.version()
         elif self.path.startswith("/live/"):
             self.live_file()
         else:
@@ -612,6 +656,20 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_HEAD(self):
         self.relay() if self._is_relay() else super().do_HEAD()
+
+    def prefix(self):
+        """Path the viewer is mounted at behind a reverse proxy (X-Forwarded-Prefix), or ""."""
+        p = (self.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
+        return p if re.match(r"^(/[\w.-]+)*$", p) else ""
+
+    def version(self):
+        data = viewer_version(self.directory).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def live_file(self):
         m = re.match(r"^/live/(\d+)/([\w.-]+\.(m3u8|ts))(\?.*)?$", self.path)
@@ -670,7 +728,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def relay(self):
-        url = self.path[1:]
+        url = self._relay_url()
         host = urlsplit(url).hostname or ""
         if not ALLOWED_HOST.search(host):
             self.send_error(403, f"Host not allowed: {host}")
@@ -678,8 +736,13 @@ class Handler(SimpleHTTPRequestHandler):
 
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else None
+        # The page sends Blink's token as X-Blink-Authorization, so that Authorization can
+        # carry a reverse proxy's basic auth; that, and X-Forwarded-*, never go to Blink.
         headers = {k: v for k, v in self.headers.items()
-                   if k.lower() not in DROP_REQUEST and not k.lower().startswith("sec-")}
+                   if k.lower() not in DROP_REQUEST
+                   and not k.lower().startswith(("sec-", "x-forwarded-"))}
+        if self.headers.get("X-Blink-Authorization"):
+            headers["Authorization"] = self.headers["X-Blink-Authorization"]
         req = urllib.request.Request(url, data=body, headers=headers, method=self.command)
 
         try:
@@ -702,7 +765,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if k.lower() in DROP_RESPONSE or k.lower().startswith("access-control-"):
                     continue
                 if k.lower() == "location" and re.match(r"^https?://", v):
-                    v = "/" + v
+                    v = self.prefix() + "/" + v
                 self.send_header(k, v)
             for k, v in CORS.items():
                 self.send_header(k, v)

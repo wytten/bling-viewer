@@ -7,6 +7,8 @@
     var fixtureName = params.get("fixture") || "empty";
     var action = params.get("action");  // "download": click every local clip's download icon
     var mode = params.get("mode");      // "login": no saved session; check the login form
+    var proxy = params.get("proxy");    // "public": bling-proxy.py run with BLING_PUBLIC=1
+    var lastUser = params.get("lastuser");  // the email this browser last signed in with
     var report = {fixture: fixtureName, requests: [], toasts: [], errors: [], downloads: []};
 
     // Record downloads (<a download> clicks) instead of saving files.
@@ -96,11 +98,12 @@
             if(mediaPage1 === null) return {status: 500, body: {message: "Internal Server Error"}};
             return $.extend({limit: 200, purge_id: 15952242263, refresh_count: 0}, mediaPage1);
         }],
-        ["GET", /^\/auth\/last-login$/, {email: "test@example.com"}],
+        ["GET", /^auth\/last-login$/, proxy == "public" ? {public: true} : {email: "test@example.com"}],
         [/\/(thumbnail|thumb)\b/, ""],
         [/\/media\/clip\//, ""]
     ];
 
+    if(lastUser) localStorage.setItem("bling.lastUser", lastUser);
     if(mode == "login") localStorage.removeItem("bling.token");
     else localStorage.setItem("bling.token", JSON.stringify({
         user: "test@example.com", access_token: "test-token", refresh_token: "test-refresh",
@@ -184,6 +187,7 @@
         report.userLabelFloats = $("#userInput").closest(".mdl-textfield").hasClass("is-dirty");
         report.focused = document.activeElement && document.activeElement.id;
         report.loginOpen = $("#login").prop("open");
+        report.rememberHidden = $("#login .remember").closest("label")[0].style.display == "none";
         var pre = document.createElement("pre");
         pre.id = "test-result";
         pre.textContent = JSON.stringify(report);
@@ -194,7 +198,9 @@
     {
         if(mode == "login")
         {
-            waitFor(function() { return $("#userInput").val(); }, function() { setTimeout(finish, 300); }, 60);
+            // Done when the email is filled in, or (public, nothing saved here) remember is hidden.
+            waitFor(function() { return $("#userInput").val() || $("#login .remember").closest("label")[0].style.display == "none"; },
+                    function() { setTimeout(finish, 300); }, 60);
             return;
         }
         waitFor(function() { return $(".drawer .navigation a[title=Activity]").length && $("#toast")[0].MaterialSnackbar; }, function()

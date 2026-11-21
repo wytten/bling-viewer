@@ -35,28 +35,44 @@
         login : {
             value: function(user, password, hardware_id, listener)
             {
-				this.authPost("/auth/login", {email: user, password: password, hardware_id: hardware_id}, listener);
+				this.authPost("auth/login", {email: user, password: password, hardware_id: hardware_id}, listener);
             },
             enumerable: false
         },
 		verify : {
             value: function(session, pin, remember, listener)
             {
-				this.authPost("/auth/verify", {session: session, pin: pin, remember: !!remember}, listener);
+				this.authPost("auth/verify", {session: session, pin: pin, remember: !!remember}, listener);
             },
             enumerable: false
         },
 		refresh : {
             value: function(refresh_token, hardware_id, listener)
             {
-				this.authPost("/auth/refresh", {refresh_token: refresh_token, hardware_id: hardware_id}, listener);
+				this.authPost("auth/refresh", {refresh_token: refresh_token, hardware_id: hardware_id}, listener);
             },
             enumerable: false
         },
         getLastLogin : {
             value: function(onSuccess)
             {
-				$.ajax({type: "GET", url: "/auth/last-login", dataType: 'json', success: onSuccess});  // optional; ignore errors
+				$.ajax({type: "GET", url: "auth/last-login", dataType: 'json', success: onSuccess});  // optional; ignore errors
+            },
+            enumerable: false
+        },
+        // The last email that signed in, kept in this browser (apart from the session, so
+        // signing out or an expired session doesn't lose it).
+        setLastUser : {
+            value: function(user)
+            {
+				if(user) localStorage.setItem("bling.lastUser", user);
+            },
+            enumerable: false
+        },
+        getLastUser : {
+            value: function()
+            {
+				return localStorage.getItem("bling.lastUser");
             },
             enumerable: false
         },

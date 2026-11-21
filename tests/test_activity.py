@@ -41,13 +41,13 @@ class ActivityTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
 
-    def run_activity(self, fixture, action="", mode=""):
+    def run_activity(self, fixture, action="", mode="", extra=""):
         profile = tempfile.mkdtemp(prefix="bling-activity-test-")
         try:
             dom = subprocess.run(
                 [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                  f"--user-data-dir={profile}", "--virtual-time-budget=30000", "--dump-dom",
-                 f"{self.base}/tests/activity_harness.html?fixture={fixture}&action={action}&mode={mode}"],
+                 f"{self.base}/tests/activity_harness.html?fixture={fixture}&action={action}&mode={mode}{extra}"],
                 capture_output=True, text=True, timeout=90).stdout
         finally:
             shutil.rmtree(profile, ignore_errors=True)
@@ -133,10 +133,26 @@ class ActivityTest(unittest.TestCase):
         r = self.run_activity("empty", mode="login")
         self.assertEqual(r["errors"], [])
         self.assertTrue(r["loginOpen"])
-        self.assertIn("GET /auth/last-login", r["requests"])
+        self.assertIn("GET auth/last-login", r["requests"])
         self.assertEqual(r["userValue"], "test@example.com")
         self.assertTrue(r["userLabelFloats"], "label overlaps the prefilled name")
         self.assertEqual(r["focused"], "passwordInput")
+        self.assertFalse(r["rememberHidden"])
+
+    def test_login_form_prefers_this_browsers_last_login(self):
+        r = self.run_activity("empty", mode="login", extra="&lastuser=me@example.com")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["userValue"], "me@example.com")
+        self.assertTrue(r["userLabelFloats"])
+
+    def test_public_proxy_hides_remember(self):
+        r = self.run_activity("empty", mode="login", extra="&proxy=public")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["userValue"], "")
+        self.assertTrue(r["rememberHidden"])
+        r = self.run_activity("empty", mode="login", extra="&proxy=public&lastuser=me@example.com")
+        self.assertEqual(r["userValue"], "me@example.com")
+        self.assertTrue(r["rememberHidden"])
 
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")
