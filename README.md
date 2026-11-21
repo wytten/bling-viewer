@@ -20,14 +20,16 @@ viewer=~/projects/github/src/bling-viewer
 port=3000
 
 if ! ss -ltn | grep -q ":$port "; then
-    (cd $viewer && python3 bling-proxy.py $port >/dev/null 2>&1 &)
+    # setsid + nohup: keep the proxy alive after this script's terminal or launcher exits
+    (cd $viewer && setsid nohup python3 bling-proxy.py $port </dev/null >/tmp/bling-proxy.log 2>&1 &)
     sleep 1
 fi
 
-google-chrome --incognito --user-data-dir=/tmp/blink-test "http://localhost:$port/" >/dev/null 2>&1 &
+setsid nohup google-chrome --incognito --user-data-dir=/tmp/blink-test "http://localhost:$port/" </dev/null >/dev/null 2>&1 &
 ```
 
-It starts the proxy only if nothing is listening on the port yet. After pulling changes to
+It starts the proxy only if nothing is listening on the port yet, detached so it outlives the
+script, and logs to `/tmp/bling-proxy.log` (on macOS, drop `setsid`). After pulling changes to
 `bling-proxy.py`, stop the running proxy so the script starts the new one. Changes to `index.html`
 or `js/` only need a page reload.
 
