@@ -329,6 +329,7 @@ def auth_login(req):
         if not login.used_cookies:
             raise
         # Remembered cookies must never lock anyone out: retry once without them.
+        print("Sign-in with remembered cookies failed; retrying without them", file=sys.stderr)
         login = OAuthLogin(email, req.get("hardware_id"), use_cookies=False)
         tokens = login.start(req["password"])
     if tokens:
@@ -624,6 +625,7 @@ class Handler(SimpleHTTPRequestHandler):
             status, result = 400, {"message": "Bad JSON"}
         except ApiError as e:
             status, result = e.status, {"message": str(e)}
+            self.log_message("%s failed: %s", self.path, e)  # message only; never the request body
         data = json.dumps(result).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
