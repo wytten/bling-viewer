@@ -9,29 +9,19 @@ an ordinary Chrome window on Linux or macOS.
 ## Quick start
 Requirements: Python 3, Google Chrome, and `ffmpeg` (live view only).
 
-Save this as `bling.sh`, point `viewer` at your clone, and run it:
-
 ```sh
-#!/bin/zsh
-# Serve bling-viewer through its proxy (bling-proxy.py, stdlib only) and open it
-# in Chrome, so no --disable-web-security is needed.
-
-viewer=~/projects/github/src/bling-viewer
-port=3000
-
-if ! ss -ltn | grep -q ":$port "; then
-    # setsid + nohup: keep the proxy alive after this script's terminal or launcher exits
-    (cd $viewer && setsid nohup python3 bling-proxy.py $port </dev/null >/tmp/bling-proxy.log 2>&1 &)
-    sleep 1
-fi
-
-setsid nohup google-chrome --incognito --user-data-dir=/tmp/blink-test "http://localhost:$port/" </dev/null >/dev/null 2>&1 &
+./bling.sh [port]    # default 3000
 ```
 
-It starts the proxy only if nothing is listening on the port yet, detached so it outlives the
-script, and logs to `/tmp/bling-proxy.log` (on macOS, drop `setsid`). After pulling changes to
-`bling-proxy.py`, stop the running proxy so the script starts the new one. Changes to `index.html`
-or `js/` only need a page reload.
+`bling.sh` starts the proxy if nothing is listening on the port yet and opens the viewer in an
+incognito Chrome window. The proxy runs detached (`setsid`/`nohup`), so it keeps running after
+the script's terminal or launcher exits, and logs to `${TMPDIR:-/tmp}/bling-proxy.log`.
+
+To launch it from anywhere, symlink it onto your `PATH`, e.g.
+`ln -s "$PWD/bling.sh" ~/bin/bling.sh`; it finds the viewer through the symlink.
+
+After pulling changes to `bling-proxy.py`, stop the running proxy so `bling.sh` starts the new one.
+Changes to `index.html` or `js/` only need a page reload.
 
 You can also run the proxy by hand: `./bling-proxy.py [port]` (default 3000, listens on
 127.0.0.1 only), then open `http://localhost:3000/`.
