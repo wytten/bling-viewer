@@ -35,13 +35,13 @@
         //   "1700000000"                                   just a timestamp, build the v3 path
         //   "/media/production/.../thumbnail"              legacy, append ".jpg"
         thumbnailPath : {
-            value: function(camera)
+            value: function(camera, types)
             {
 				var thumb = String(camera.thumbnail || "");
 				if(/^\d+$/.test(thumb))
 				{
 					return "/api/v3/media/accounts/" + credentials.account.id + "/networks/" + camera.network_id +
-						"/" + (camera.type || "catalina") + "/" + camera.camera_id + "/thumbnail/thumbnail.jpg?ts=" + thumb + "&ext=";
+						"/" + (camera.type || types[camera.camera_id] || "catalina") + "/" + camera.camera_id + "/thumbnail/thumbnail.jpg?ts=" + thumb + "&ext=";
 				}
 				if(/&ext=$/.test(thumb) || /\.jpg(\?|$)/.test(thumb))
 				{
@@ -54,24 +54,29 @@
         getThumbnail : {
             value: function(camera, listener)
             {
-				var path = this.thumbnailPath(camera);
-				var url = /^https?:/.test(path) ? path : "https://rest-" + credentials.region + "." + server + path;
-				$.ajax
-				({
-					type: "GET",
-					url: url,
-                    mimeType: "text/plain; charset=x-user-defined",
-					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
-					},
-					success: function (data)
-					{
-						listener.onSuccess(base64Encode(data));
-					},
-					error: function (jqxhr, textStatus, error)
-					{
-						listener.onError(jqxhr.responseJSON);
-					}
+				var self = this;
+				// A bare-timestamp thumbnail needs the camera's product type, which only the homescreen has.
+				cameraTypes.done(function(types)
+				{
+					var path = self.thumbnailPath(camera, types);
+					var url = /^https?:/.test(path) ? path : "https://rest-" + credentials.region + "." + server + path;
+					$.ajax
+					({
+						type: "GET",
+						url: url,
+						mimeType: "text/plain; charset=x-user-defined",
+						beforeSend: function(xhr) {
+							xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
+						},
+						success: function (data)
+						{
+							listener.onSuccess(base64Encode(data));
+						},
+						error: function (jqxhr, textStatus, error)
+						{
+							listener.onError(jqxhr.responseJSON);
+						}
+					});
 				});
             },
             enumerable: false

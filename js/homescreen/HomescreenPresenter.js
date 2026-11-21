@@ -19,12 +19,20 @@
                 this.interactor.get(new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
+                        var types = {};
+                        $.each([].concat(data.cameras || [], data.owls || [], data.doorbells || []), function(i, c)
+                        {
+                            if(c.type) types[c.id] = c.type;
+                        });
+                        cameraTypes.resolve(types);
+
                         onSuccess(data);
 						
 						self.cameraView.onOwls(data.owls);
                     },
                     function(data)
                     {
+                        cameraTypes.resolve({});
                         self.view.showError(data);
                     }));
             },
