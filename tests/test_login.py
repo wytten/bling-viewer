@@ -46,6 +46,9 @@ class FakeBlink:
 
 class FakeBlinkHandler(BaseHTTPRequestHandler):
     blink = None
+    # How sign-in reports "done, no PIN needed": real Blink answered 201 for a remembered
+    # device (2026-11-21); blinkpy expects a redirect.
+    signin_ok = 201
 
     def log_message(self, *a):
         pass
@@ -128,6 +131,8 @@ class FakeBlinkHandler(BaseHTTPRequestHandler):
             remembered = self.blink.remember_tokens.get(self.cookies().get("remember"))
             if remembered and remembered == s["hardware_id"]:
                 s["authed"] = True
+                if self.signin_ok == 201:
+                    return self.reply(201, {"status": "auth-completed"})
                 return self.reply(302, headers=[("Location", "/oauth/v2/authorize")])
             self.blink.pins_asked += 1
             self.reply(412, {"tsv_state": "pending"})
@@ -252,6 +257,15 @@ class LoginTest(unittest.TestCase):
         # Still remembered on the third login (cookies re-saved).
         _, asked = self.login()
         self.assertFalse(asked)
+
+    def test_remembered_signin_reported_by_redirect(self):
+        FakeBlinkHandler.signin_ok = 302
+        try:
+            self.login(remember=True)
+            _, asked = self.login()
+            self.assertFalse(asked)
+        finally:
+            FakeBlinkHandler.signin_ok = 201
 
     def test_saved_cookies_exclude_session_and_csrf(self):
         self.login(remember=True)

@@ -281,12 +281,14 @@ class OAuthLogin:
         status, _, body = fetch(self.nofollow, OAUTH_SIGNIN, {
             "username": self.email, "password": password, "csrf-token": self.csrf},
             self._form_headers())
-        if status in (301, 302, 303, 307, 308):
+        resp = as_json(body)
+        # Signed in without a PIN: blinkpy expects a redirect, but for a remembered device
+        # Blink answers 201 (seen 2026-11-21), like the 2FA verify step does.
+        if status in (200, 201, 301, 302, 303, 307, 308):
             tokens = self.finish()
             if self.remembered:
                 self.remember()  # keep Blink's refreshed cookies
             return tokens
-        resp = as_json(body)
         if status == 412 or (status == 202 and (resp.get("tsv_state") or resp.get("tsv_methods")
                                                  or resp.get("next_time_in_secs"))):
             return None
