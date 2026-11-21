@@ -16,7 +16,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/api/v1/camera/usage",
 					dataType: 'json',
 					beforeSend: function(xhr) { 
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (json)
 					{
@@ -39,7 +39,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/network/" + networkId,
 					dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (json)
 					{

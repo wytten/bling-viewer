@@ -16,7 +16,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/api/v3/accounts/" + credentials.account.id + "/homescreen",
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{

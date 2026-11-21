@@ -7,103 +7,77 @@
 
     Object.defineProperties(LoginInteractor.prototype,
     {
-        login : {
-            value: function(user, password, uid, notification_key, listener)
+        // Blink's OAuth login runs inside bling-proxy.py (see /auth/* there).
+        authPost : {
+            value: function(path, body, listener)
             {
 				$.ajax
 				({
 					type: "POST",
-					url: "https://rest-prod." + server + "/api/v5/account/login",
-					data: {	"app_version":"6.0.7 (520300) #afb0be72a", "client_name": "Computer", 
-							"client_type": "android", "device_identifier": "Bling Desktop", 
-							"email": user, "os_version": "5.1.1", "password": password, 
-							"reauth":false, "unique_id": uid},
+					url: path,
+					data: JSON.stringify(body),
+					contentType: 'application/json',
 					dataType: 'json',
-					beforeSend: function(xhr) { 
-						
-					},
 					success: function (json)
 					{
 						listener.onSuccess(json);
 					},
 					error: function (jqxhr, textStatus, error)
 					{
-						listener.onError(jqxhr.responseJSON);
+						var data = jqxhr.responseJSON || {message: "Login service unavailable (" + jqxhr.status + "); is bling-proxy.py running?"};
+						data.status = jqxhr.status;
+						listener.onError(data);
 					}
 				});
+            },
+            enumerable: false
+        },
+        login : {
+            value: function(user, password, hardware_id, listener)
+            {
+				this.authPost("/auth/login", {email: user, password: password, hardware_id: hardware_id}, listener);
             },
             enumerable: false
         },
 		verify : {
-            value: function(key, listener)
+            value: function(session, pin, listener)
             {
-				$.ajax
-				({
-					type: "POST",
-					url: "https://rest-" + credentials.region + "." + server + "/api/v4/account/" + credentials.account.id + "/client/" + credentials.client.id + "/pin/verify/",
-					data: {"pin": key},
-					dataType: 'json',
-					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
-					},
-					success: function (json)
-					{
-						listener.onSuccess(json);
-					},
-					error: function (jqxhr, textStatus, error)
-					{
-						listener.onError(jqxhr.responseJSON);
-					}
-				});
+				this.authPost("/auth/verify", {session: session, pin: pin}, listener);
+            },
+            enumerable: false
+        },
+		refresh : {
+            value: function(refresh_token, hardware_id, listener)
+            {
+				this.authPost("/auth/refresh", {refresh_token: refresh_token, hardware_id: hardware_id}, listener);
             },
             enumerable: false
         },
         setToken : {
-            value: function(data, listener)
+            value: function(data)
             {
-                $.ajax
-				({
-					type: "POST",
-					url: "/data/token.json",
-					data: JSON.stringify(data),
-					dataType: 'json',
-                    contentType: 'application/json',
-                    beforeSend: function(xhr)
-                    {
-                        //$.xhrPool.push(xhr);
-					},
-					success: function (json)
-					{
-						listener.onSuccess(json);
-					},
-					error: function (jqxhr, textStatus, error)
-					{
-						if(textStatus != "abort")
-                        {
-                            listener.onError(jqxhr.responseJSON);
-                        }
-					}
-				});
+				if(data)
+				{
+					localStorage.setItem("bling.token", JSON.stringify(data));
+				}
+				else
+				{
+					localStorage.removeItem("bling.token");
+				}
             },
             enumerable: false
         },
         getToken : {
-            value: function(listener)
+            value: function()
             {
-				$.ajax
-				({
-					type: "GET",
-					url: "/data/token.json",
-					dataType: 'json',
-					success: function (json)
-					{
-						listener.onSuccess(json);
-					},
-					error: function (jqxhr, textStatus, error)
-					{
-						listener.onError(jqxhr.responseJSON);
-					}
-				});
+				try
+				{
+					return JSON.parse(localStorage.getItem("bling.token")) || null;
+				}
+				catch(e)
+				{
+					return null;
+				}
             },
             enumerable: false
         },
@@ -116,7 +90,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/user",
 					dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{

@@ -16,7 +16,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/api/v1/accounts/" + credentials.account.id + "/media/changed?since=-999999999-01-01T00:00:00+18:00&page=" + page,
 					dataType: 'json',
 					beforeSend: function(xhr) { 
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (json)
 					{
@@ -39,7 +39,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/api/v2/videos/count",
 					dataType: 'json',
 					beforeSend: function(xhr) { 
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (json)
 					{
@@ -62,7 +62,7 @@
 					url: "https://rest-" + credentials.region + "." + server + path,
                     mimeType: "text/plain; charset=x-user-defined",
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -84,7 +84,7 @@
 					type: "GET",
 					url: "https://rest-" + credentials.region + "." + server + path,
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
                     xhrFields: {
                         responseType: 'blob'

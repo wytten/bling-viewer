@@ -18,40 +18,22 @@
             value: function(user, password)
             {
                 var self = this;
-                 
-				var uid = "00000000-1111-0000-1111-00000000000";
-				var notification_key = generate_uid(152);
-				 
-                this.interactor.login(user, password, uid, notification_key, new blink.listeners.BaseDecisionListener(
+                var stored = this.interactor.getToken();
+
+                this.interactor.login(user, password, stored && stored.hardware_id, new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
-						data.server = "rest-" + data.account.tier + "." + server;
-						data.port = 443;
-						data.user = user;
-						data.uid = uid;
-						data.notification_key = notification_key;
-						
-                        credentials.region = data.account.tier;
-                        credentials.token = data.auth.token;
-                        credentials.account = data.account;
-                        credentials.client = {id: data.account.client_id, verification_required: data.account.client_verification_required};
-                        
-                        //correction for desktop
-                        credentials.account.id = data.account.account_id;
-                        credentials.authtoken = {authtoken: credentials.token};
-                        data.account.id = data.account.account_id;
-                        data.authtoken = {authtoken: credentials.token};
-
-                        self.interactor.setToken(data, new blink.listeners.BaseDecisionListener(function(data){}, function(data){}));
-                        
-						if(credentials.client.verification_required)
+						if(data["2fa_required"])
 						{
-							self.loginView.onVerificationRequired(data);
+							self.pendingSession = data.session;
+							self.pendingUser = user;
+							self.loginView.onVerificationRequired({user: user});
 						}
 						else
 						{
+							self.onTokens(data, user);
 							self.getUser();
-						} 
+						}
                     },
                     function(data)
                     {
@@ -64,18 +46,13 @@
             value: function(key)
             {
                 var self = this;
-                 
-                this.interactor.verify(key, new blink.listeners.BaseDecisionListener(
+
+                this.interactor.verify(this.pendingSession, key, new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
-						if(data.valid)
-						{
-							self.getUser();
-						}
-						else
-						{
-							document.querySelector('#toast').MaterialSnackbar.showSnackbar({message: "Invalid pin", timeout: 10000});
-						}
+						self.pendingSession = null;
+						self.onTokens(data, self.pendingUser);
+						self.getUser();
                     },
                     function(data)
                     {
@@ -84,25 +61,92 @@
             },
             enumerable: false
         },
+        // Apply a token response from bling-proxy.py, persist it, and schedule its refresh.
+        onTokens : {
+            value: function(data, user)
+            {
+                var self = this;
+                var stored = {
+                    user: user,
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token,
+                    hardware_id: data.hardware_id,
+                    tier: data.tier,
+                    account_id: data.account_id,
+                    expires_at: Date.now() + (data.expires_in || 3600) * 1000
+                };
+                this.interactor.setToken(stored);
+                this.applyToken(stored);
+
+                clearTimeout(this.refreshTimer);
+                var delay = Math.max(stored.expires_at - Date.now() - 120000, 10000);
+                this.refreshTimer = setTimeout(function() { self.refresh(); }, delay);
+            },
+            enumerable: false
+        },
+        applyToken : {
+            value: function(stored)
+            {
+                credentials.region = stored.tier;
+                credentials.token = stored.access_token;
+                credentials.account = {id: stored.account_id};
+            },
+            enumerable: false
+        },
+        refresh : {
+            value: function(onDone)
+            {
+                var self = this;
+                var stored = this.interactor.getToken();
+                if(!stored || !stored.refresh_token)
+                {
+                    return;
+                }
+
+                this.interactor.refresh(stored.refresh_token, stored.hardware_id, new blink.listeners.BaseDecisionListener(
+                    function(data)
+                    {
+                        self.onTokens(data, stored.user);
+                        if(onDone) onDone();
+                    },
+                    function(data)
+                    {
+                        // Refresh token rejected: keep hardware_id (avoids a new 2FA device) but drop the session.
+                        if(data && data.status >= 400 && data.status < 500)
+                        {
+                            self.interactor.setToken({hardware_id: stored.hardware_id});
+                        }
+                        if(!onDone)
+                        {
+                            document.querySelector('#toast').MaterialSnackbar.showSnackbar({message: "Session expired, reload to sign in again", timeout: 10000});
+                        }
+                    }));
+            },
+            enumerable: false
+        },
         checkToken : {
             value: function()
             {
                 var self = this;
-                    
-                this.interactor.getToken(new blink.listeners.BaseDecisionListener(
-                    function(data)
-                    {
-                        credentials.region = data.account.tier;
-                        credentials.token = data.auth.token;
-                        credentials.account = data.account;
-                        credentials.client = {id: data.account.client_id, verification_required: data.account.client_verification_required};
+                var stored = this.interactor.getToken();
+                if(!stored || !stored.refresh_token)
+                {
+                    return;
+                }
 
-                        self.getUser();
-                    },
-                    function(data)
-                    {
-                        
-                    }));
+                if(stored.access_token && stored.expires_at - Date.now() > 120000)
+                {
+                    this.onTokens({
+                        access_token: stored.access_token, refresh_token: stored.refresh_token,
+                        hardware_id: stored.hardware_id, tier: stored.tier, account_id: stored.account_id,
+                        expires_in: (stored.expires_at - Date.now()) / 1000
+                    }, stored.user);
+                    this.getUser();
+                }
+                else
+                {
+                    this.refresh(function() { self.getUser(); });
+                }
             },
             enumerable: false
         },

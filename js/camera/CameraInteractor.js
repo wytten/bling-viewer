@@ -16,7 +16,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/network/" + networkId + "/camera/" + cameraId,
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -39,7 +39,7 @@
 					url: "https://rest-" + credentials.region + "." + server + path + ".jpg",
                     mimeType: "text/plain; charset=x-user-defined",
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -62,7 +62,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/network/" + network + "/camera/" + camera + "/thumbnail",
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -85,7 +85,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/api/v5/accounts/" + credentials.account.id + "/networks/" + network + "/cameras/" + camera + "/liveview",
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -108,7 +108,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/network/" + network + "/command/" + command,
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -131,7 +131,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/api/v5/accounts/" + credentials.account.id + "/networks/" + network + "/cameras/" + camera + "/join/" + command,
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
@@ -154,7 +154,7 @@
 					url: "https://rest-" + credentials.region + "." + server + "/network/" + network + "/update",
                     dataType: 'json',
 					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("TOKEN_AUTH", credentials.token);
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
 					},
 					success: function (data)
 					{
