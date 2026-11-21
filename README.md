@@ -1,9 +1,85 @@
 # Bling viewer
-Blink Home Security Camera is a great product but currenty lacks of an official web viewer. This project is an attempt to create a web viewer that complements the current Mobile application. In conjuntion with [Bling Desktop](https://github.com/lurume84/bling-desktop) project, it works as a Desktop solution for Blink Systems.
+A web viewer for Blink Home Security cameras: thumbnails, battery and temperature for every camera
+on each network, live view, and a list of recorded clips to watch or download.
 
-**If you want to use this in your Windows you have to install** [Bling Desktop](https://github.com/lurume84/bling-desktop). It will automatically download this repository, do not try to execute index.html as will not work because of security restrictions in browsers
+This fork runs without Bling Desktop.[^desktop] A small Python proxy, `bling-proxy.py`, serves the
+viewer and handles everything a browser can't do against Blink's servers by itself, so it works in
+an ordinary Chrome window on Linux or macOS.
 
-## Example
+## Quick start
+Requirements: Python 3, Google Chrome, and `ffmpeg` (live view only).
+
+Save this as `bling.sh`, point `viewer` at your clone, and run it:
+
+```sh
+#!/bin/zsh
+# Serve bling-viewer through its proxy (bling-proxy.py, stdlib only) and open it
+# in Chrome, so no --disable-web-security is needed.
+
+viewer=~/projects/github/src/bling-viewer
+port=3000
+
+if ! ss -ltn | grep -q ":$port "; then
+    (cd $viewer && python3 bling-proxy.py $port >/dev/null 2>&1 &)
+    sleep 1
+fi
+
+google-chrome --incognito --user-data-dir=/tmp/blink-test "http://localhost:$port/" >/dev/null 2>&1 &
+```
+
+It starts the proxy only if nothing is listening on the port yet. After pulling changes to
+`bling-proxy.py`, stop the running proxy so the script starts the new one. Changes to `index.html`
+or `js/` only need a page reload.
+
+You can also run the proxy by hand: `./bling-proxy.py [port]` (default 3000, listens on
+127.0.0.1 only), then open `http://localhost:3000/`.
+
+## What bling-proxy.py does
+* **Relays API calls.** The page requests `/https://rest-<region>.immedia-semi.com/...` and the
+  proxy forwards it, adding CORS headers. Only `immedia-semi.com` hosts are relayed, so it can't be
+  used as an open proxy.
+* **Signs in with Blink's OAuth.** Blink retired the old `/api/v5/account/login` endpoint (it now
+  answers "An app update is required"). Current Blink apps use OAuth 2.0 with PKCE at
+  `api.oauth.blink.com`, which involves cookies, a CSRF token scraped from HTML and redirects that a
+  web page can't follow. The proxy does that flow behind `/auth/login`, `/auth/verify` (the 2FA PIN
+  Blink emails or texts you) and `/auth/refresh`. The flow mirrors
+  [blinkpy](https://github.com/fronzbot/blinkpy).
+* **Streams live view.** Blink sends live video over its own "immis" protocol, which browsers can't
+  play. `/live/start` connects to the camera's stream, sends Blink's keep-alives, and pipes the
+  video through `ffmpeg` into an HLS playlist under `/live/<camera_id>/`, which the page plays with
+  hls.js. A stream stops when you click stop, when Blink ends the session, or 30 seconds after the
+  page stops fetching it.
+* **Serves the viewer.** Everything else is served as static files from the repository.
+
+It uses only the Python standard library.
+
+## Changes from upstream
+Besides the proxy, the viewer itself was updated for Blink's current API:
+
+* API calls send `Authorization: Bearer <token>` instead of the retired `TOKEN_AUTH` header.
+* The session is kept in the browser's `localStorage` and refreshed before the token expires, so a
+  reload doesn't need a new login. The same device ID is reused on later logins.
+* Thumbnails work with Blink's current formats (full `/api/v3/media/...` paths, or bare timestamps
+  that need the camera's product type from the homescreen).
+* Live view uses Blink's v6 endpoint (v2 for Minis and doorbells) and the proxy instead of Bling
+  Desktop.
+* Buttons and icons have tooltips.
+
+## Security
+Everything runs on your machine. Your email and password go from the page to the proxy on
+`127.0.0.1` and from there only to Blink's sign-in servers. Neither stores them. The access and
+refresh tokens Blink returns are kept in the browser's `localStorage`. `bling.sh` uses an incognito
+window, so they're discarded when you close Chrome, and you'll sign in (and possibly enter a 2FA PIN)
+again next time.
+
+## Tests
+```sh
+python3 -m unittest discover tests
+```
+The tests run the proxy against a fake Blink live view server. They need `ffmpeg` and `openssl`,
+but no network or Blink account.
+
+## Screenshots
 ### Networks
 Check current thumbnail, battery status and temperature for all cameras of each network
 
@@ -13,27 +89,9 @@ View and download all videos
 
 ![](img/example2.png)
 
-## Security
-This viewer is just a frontend application. This means user credentials are never stored, being directly forwarded to Immedia servers. 
-Once login succeeds, server returns a token that will be provided in future REST API calls. 
-
-## Usage Guide
-As Immedia server is not being proxied by any other server, trying to run the application in a Chrome browser will incur in CORS problems. 
-Using CORS plugin will not solve the problem as some Immedia endpoints do not implement OPTIONS method for some calls. Chrome's preflight request 
-will fail for this reason. 
-
-To avoid this problem you can do one of these things:
-
-* Close all instances of Chrome browser (open taskmanager and kill any resilient Chrome process). Execute 
-
-Windows
-```
-C:\Program Files (x86)\Google\Chrome\Application\chrome.exe --disable-web-security --user-data-dir=<path to viewer>. 
-```
-MacOS
-```
-open -a /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --args --disable-web-security --user-data-dir=<path to viewer>
-```
-
-* Or, use [Bling Desktop](https://github.com/lurume84/bling-desktop), another project WIP. This browser is a modified CEF that will automatically add Immedia servers to CORS headers. 
-Additionally, this browser provides advanced functionality like automatic videos backup.
+[^desktop]: The original [lurume84/bling-viewer](https://github.com/lurume84/bling-viewer) was
+    built as the front end of [Bling Desktop](https://github.com/lurume84/bling-desktop), a Windows
+    app (a modified Chromium Embedded Framework browser) that downloads the viewer, lifts browser
+    CORS restrictions, converts live view streams, and backs up videos. Upstream's other option was to
+    launch Chrome with `--disable-web-security --user-data-dir=<path to viewer>`. Neither is needed
+    with `bling-proxy.py`, and both rely on the old Blink login that no longer works.
