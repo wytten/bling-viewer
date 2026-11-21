@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<!-- Loads the real index.html with tests/fake_blink.js injected before the app's scripts.
+     Driven by tests/test_activity.py in headless Chrome: activity_harness.html?fixture=<name> -->
+<html><head><meta charset="utf-8"><title>activity harness</title></head><body>
+<script>
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "/index.html", false);
+    xhr.send();
+    var html = xhr.responseText
+        .replace("<head>", "<head><base href=\"/\">")
+        .replace("<script src=\"js/Context.js\"><\/script>",
+                 "<script src=\"tests/fake_blink.js\"><\/script><script src=\"js/Context.js\"><\/script>");
+    document.open();
+    document.write(html);
+    document.close();
+</script>
+</body></html>

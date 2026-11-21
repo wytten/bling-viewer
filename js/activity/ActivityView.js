@@ -80,7 +80,8 @@
                     var media = $.grep(data.media || [], function(v) { return !v.deleted; });
                     if(page == 1 && media.length == 0)
                     {
-                        $(".tableContainer").html("<p class='empty'>No clips in Blink's cloud storage for this account" +
+                        // In the (white) video area: the clip column has a black background.
+                        $(".videoContainer").html("<p class='empty'>No clips in Blink's cloud storage for this account" +
                             (data.media ? "" : " (unexpected response, see the browser console)") + ".</p>");
                     }
 
