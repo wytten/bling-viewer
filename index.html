@@ -94,7 +94,14 @@
         </div>
     </body>
     <script>
-        $.ajaxPrefilter(function( options ){options.url = "" + options.url;});
+        // When served by bling-proxy.pl, route cross-origin requests through it
+        // ("/https://host/path") so CORS is handled without --disable-web-security.
+        $.ajaxPrefilter(function( options ){
+            if (/^https?:$/.test(location.protocol) && /^https?:\/\//.test(options.url)
+                && options.url.indexOf(location.origin + "/") !== 0) {
+                options.url = "/" + options.url;
+            }
+        });
     
         var server = "immedia-semi.com";
         var credentials = {region: "", token: ""};

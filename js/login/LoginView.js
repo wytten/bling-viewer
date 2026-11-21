@@ -66,12 +66,8 @@
 		versionNotFound : {
             value: function(data)
             {
-				if(data.status == 404)
-				{
-					window.location = "https://github.com/lurume84/bling-desktop/releases/download/v0.1.16/BlingSetup.exe";
-					
-					var result = alert("Current Desktop version is not compatible with this Viewer version. Close the application and install latest one from Documents\\Bling.exe\\Download\\Versions\\BlingSetup.exe.");
-				}
+				// Desktop version check / redirect to BlingSetup.exe disabled:
+				// the viewer is served without Bling Desktop, so /version 404s.
             },
             enumerable: false
         },
