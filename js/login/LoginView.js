@@ -36,7 +36,6 @@
                     componentHandler.upgradeAllRegistered();
                     
                     self.presenter.checkToken();
-                    self.presenter.checkVersion();
                 });
             },
             enumerable: false
@@ -53,21 +52,6 @@
                 
                 var dashboard = $("<a/>", {id: "dashboard", class: "link selected", href: "#", title: "Cameras", html: "<i class='fas fa-home'></i>"});
                 dashboard.appendTo($(".drawer .navigation"));
-            },
-            enumerable: false
-        },
-		versionFound : {
-            value: function(data)
-            {
-                $("#version .desktop .number").html(data);
-            },
-            enumerable: false
-        },
-		versionNotFound : {
-            value: function(data)
-            {
-				// Desktop version check / redirect to BlingSetup.exe disabled:
-				// the viewer is served without Bling Desktop, so /version 404s.
             },
             enumerable: false
         },
