@@ -43,11 +43,11 @@
             enumerable: false
         },
 		verify : {
-            value: function(key)
+            value: function(key, remember)
             {
                 var self = this;
 
-                this.interactor.verify(this.pendingSession, key, new blink.listeners.BaseDecisionListener(
+                this.interactor.verify(this.pendingSession, key, remember, new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
 						self.pendingSession = null;

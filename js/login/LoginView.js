@@ -29,7 +29,7 @@
                     {
                         $(this).find(".progress").show();
                         $(this).find(".submit").hide();
-                        self.presenter.verify($("#login .verification").val());
+                        self.presenter.verify($("#login .verification").val(), $("#login .remember").prop("checked"));
                         evt.preventDefault();
                     });
                     

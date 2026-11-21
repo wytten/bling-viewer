@@ -40,9 +40,9 @@
             enumerable: false
         },
 		verify : {
-            value: function(session, pin, listener)
+            value: function(session, pin, remember, listener)
             {
-				this.authPost("/auth/verify", {session: session, pin: pin}, listener);
+				this.authPost("/auth/verify", {session: session, pin: pin, remember: !!remember}, listener);
             },
             enumerable: false
         },

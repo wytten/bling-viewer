@@ -61,8 +61,13 @@ Besides the proxy, the viewer itself was updated for Blink's current API:
 Everything runs on your machine. Your email and password go from the page to the proxy on
 `127.0.0.1` and from there only to Blink's sign-in servers. Neither stores them. The access and
 refresh tokens Blink returns are kept in the browser's `localStorage`. `bling.sh` uses an incognito
-window, so they're discarded when you close Chrome, and you'll sign in (and possibly enter a 2FA PIN)
-again next time.
+window, so they're discarded when you close Chrome and you'll sign in again next time.
+
+Ticking **Don't ask again on this computer** when entering the 2FA PIN asks Blink to remember the
+device, and the proxy saves the device's ID and Blink's long-lived login cookies in
+`~/.config/bling-viewer/` (owner-only; `BLING_REMEMBER_DIR` overrides). Later logins with the same
+email reuse them, so Blink can skip the PIN even from a fresh incognito window. Delete that directory
+to forget the computer; entering a PIN with the box unticked also forgets it.
 
 ## Tests
 ```sh
@@ -72,6 +77,8 @@ No network or Blink account needed:
 
 * `tests/test_live_view.py` runs the proxy against a fake Blink live view server (needs `ffmpeg`
   and `openssl`).
+* `tests/test_login.py` runs the `/auth/*` login endpoints against a fake Blink OAuth server,
+  including 2FA and "Don't ask again on this computer".
 * `tests/test_activity.py` loads the real viewer in headless Chrome with Blink's API faked by
   `tests/fake_blink.js`, opens Activity and checks what's drawn for clips, no clips, unexpected
   responses and server errors (needs Google Chrome or Chromium).

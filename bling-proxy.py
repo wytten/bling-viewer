@@ -9,7 +9,11 @@ Blink's OAuth v2 login (PKCE, cookies, CSRF token scraped from HTML) can't run i
 the browser, so it is done here behind three local JSON endpoints:
 
   POST /auth/login    {email, password, hardware_id?} -> tokens | {2fa_required, session}
-  POST /auth/verify   {session, pin}                  -> tokens
+  POST /auth/verify   {session, pin, remember?}       -> tokens
+
+With remember, Blink's long-lived login cookies and the device's hardware_id are saved
+under ~/.config/bling-viewer/ (BLING_REMEMBER_DIR overrides) so later logins with the
+same email can skip the 2FA pin.
   POST /auth/refresh  {refresh_token, hardware_id}    -> tokens
 
 "tokens" is {access_token, refresh_token, expires_in, hardware_id, tier, account_id}.
@@ -91,6 +95,11 @@ API_UA = "27.0ANDROID_28373244"
 HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
 PENDING_TTL = 600  # seconds a login may wait for its 2FA pin
+
+# "Remember this computer": Blink's long-lived OAuth cookies plus the device's hardware_id,
+# kept by the proxy (the browser may be incognito) so later logins can skip the 2FA pin.
+REMEMBER_DIR = os.environ.get("BLING_REMEMBER_DIR") or os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "bling-viewer")
 pending = {}       # session id -> OAuthLogin awaiting 2FA
 pending_lock = threading.Lock()
 
@@ -171,10 +180,42 @@ def exchange(data):
     }
 
 
+def _remember_paths():
+    return os.path.join(REMEMBER_DIR, "device.json"), os.path.join(REMEMBER_DIR, "cookies.lwp")
+
+
+def remembered_device(email):
+    """The saved device for this email, or None."""
+    device_file, _ = _remember_paths()
+    try:
+        with open(device_file) as f:
+            device = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return device if device.get("email", "").lower() == email.lower() else None
+
+
+def forget_device():
+    for path in _remember_paths():
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+
 class OAuthLogin:
     """One Authorization Code + PKCE login, with its own cookie jar."""
 
-    def __init__(self, hardware_id=None):
+    def __init__(self, email, hardware_id=None):
+        self.email = email
+        self.jar = http.cookiejar.LWPCookieJar()
+        self.remembered = remembered_device(email)
+        if self.remembered:
+            hardware_id = self.remembered.get("hardware_id")
+            try:
+                self.jar.load(_remember_paths()[1])
+            except (OSError, http.cookiejar.LoadError):
+                pass
         try:
             self.hardware_id = str(uuid.UUID(hardware_id)).upper()
         except (TypeError, ValueError):
@@ -182,17 +223,28 @@ class OAuthLogin:
         self.verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
         self.challenge = base64.urlsafe_b64encode(
             hashlib.sha256(self.verifier.encode()).digest()).decode().rstrip("=")
-        jar = http.cookiejar.CookieJar()
-        self.follow = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
-        self.nofollow = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), NoRedirect)
+        self.follow = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        self.nofollow = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar), NoRedirect)
         self.csrf = None
         self.created = time.time()
+
+    def remember(self):
+        """Save hardware_id and Blink's persistent cookies (owner-only files)."""
+        os.makedirs(REMEMBER_DIR, mode=0o700, exist_ok=True)
+        device_file, cookie_file = _remember_paths()
+        old = os.umask(0o077)
+        try:
+            with open(device_file, "w") as f:
+                json.dump({"email": self.email, "hardware_id": self.hardware_id}, f)
+            self.jar.save(cookie_file)  # persistent cookies only (session cookies are skipped)
+        finally:
+            os.umask(old)
 
     def _form_headers(self):
         return {"User-Agent": BROWSER_UA, "Accept": "*/*", "Origin": OAUTH_BASE,
                 "Referer": OAUTH_SIGNIN, "Content-Type": "application/x-www-form-urlencoded"}
 
-    def start(self, email, password):
+    def start(self, password):
         """Return tokens, or None if a 2FA pin is needed."""
         params = urlencode({
             "app_brand": "blink", "app_version": "50.1", "client_id": OAUTH_CLIENT_ID,
@@ -213,23 +265,31 @@ class OAuthLogin:
         self.csrf = parser.token
 
         status, _, body = fetch(self.nofollow, OAUTH_SIGNIN, {
-            "username": email, "password": password, "csrf-token": self.csrf},
+            "username": self.email, "password": password, "csrf-token": self.csrf},
             self._form_headers())
         if status in (301, 302, 303, 307, 308):
-            return self.finish()
+            tokens = self.finish()
+            if self.remembered:
+                self.remember()  # keep Blink's refreshed cookies
+            return tokens
         resp = as_json(body)
         if status == 412 or (status == 202 and (resp.get("tsv_state") or resp.get("tsv_methods")
                                                  or resp.get("next_time_in_secs"))):
             return None
         raise ApiError(resp.get("message") or f"Blink rejected the sign-in ({status}); check email and password")
 
-    def verify(self, pin):
+    def verify(self, pin, remember=False):
         status, _, body = fetch(self.follow, OAUTH_2FA_VERIFY, {
-            "2fa_code": pin, "csrf-token": self.csrf, "remember_me": "false"},
+            "2fa_code": pin, "csrf-token": self.csrf, "remember_me": "true" if remember else "false"},
             self._form_headers())
         if status != 201 or as_json(body).get("status") != "auth-completed":
             raise ApiError(as_json(body).get("message") or "Invalid pin")
-        return self.finish()
+        tokens = self.finish()
+        if remember:
+            self.remember()
+        elif self.remembered:
+            forget_device()  # remembering didn't spare this pin and the box was unticked
+        return tokens
 
     def finish(self):
         status, headers, _ = fetch(self.nofollow, OAUTH_AUTHORIZE, headers={
@@ -247,8 +307,8 @@ class OAuthLogin:
 def auth_login(req):
     if not req.get("email") or not req.get("password"):
         raise ApiError("Email and password are required", 400)
-    login = OAuthLogin(req.get("hardware_id"))
-    tokens = login.start(req["email"], req["password"])
+    login = OAuthLogin(req["email"].strip(), req.get("hardware_id"))
+    tokens = login.start(req["password"])
     if tokens:
         return tokens
     sid = secrets.token_urlsafe(16)
@@ -265,7 +325,7 @@ def auth_verify(req):
         login = pending.get(req.get("session"))
     if not login or time.time() - login.created > PENDING_TTL:
         raise ApiError("Login expired, sign in again")
-    tokens = login.verify(str(req.get("pin", "")).strip())
+    tokens = login.verify(str(req.get("pin", "")).strip(), bool(req.get("remember")))
     with pending_lock:
         pending.pop(req.get("session"), None)
     return tokens
