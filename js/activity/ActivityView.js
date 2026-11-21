@@ -74,7 +74,16 @@
                 self.presenter.getVideos(page, function(data)
                 {
                     var events = [];
-                    
+
+                    console.log("Activity page " + page + ":", data);
+
+                    var media = $.grep(data.media || [], function(v) { return !v.deleted; });
+                    if(page == 1 && media.length == 0)
+                    {
+                        $(".tableContainer").html("<p class='empty'>No clips in Blink's cloud storage for this account" +
+                            (data.media ? "" : " (unexpected response, see the browser console)") + ".</p>");
+                    }
+
                     if(data.media != undefined)
                     {
                         var ul = $("ul.activity");
@@ -85,15 +94,17 @@
                             {
                                 var icon = "";
                                 
+                                var name = value.device_name || value.camera_name;  // newer API: device_name
+
                                 for(var i = 0; i < self.cameras.length; ++i)
                                 {
-                                    if(self.cameras[i].name == value.camera_name)
+                                    if(self.cameras[i].name == name)
                                     {
                                         icon = "<img class='icon' src=\"img/" + self.cameras[i].type + ".png\"/>";
                                         break;
                                     }
                                 }
-                                var cameraName = icon + value.camera_name;
+                                var cameraName = icon + name;
                                 
                                 var li = $("<li/>", {"data-path" : value.media, html: '<div class="thumbnail"><div class="loadingContainer"><div class="mdl-spinner mdl-spinner--single-color mdl-js-spinner is-active"></div></div></div>'});
                                 li.appendTo(ul);
@@ -171,6 +182,7 @@
             value: function(data)
             {
                 console.error(data);
+                document.querySelector('#toast').MaterialSnackbar.showSnackbar({message: (data && data.message) || "Activity request failed"});
             },
             enumerable: false
         }

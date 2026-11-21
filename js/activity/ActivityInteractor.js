@@ -13,7 +13,7 @@
 				return $.ajax
 				({
 					type: "GET",
-					url: "https://rest-" + credentials.region + "." + server + "/api/v1/accounts/" + credentials.account.id + "/media/changed?since=-999999999-01-01T00:00:00+18:00&page=" + page,
+					url: "https://rest-" + credentials.region + "." + server + "/api/v1/accounts/" + credentials.account.id + "/media/changed?since=1970-01-01T00:00:00+0000&page=" + page,
 					dataType: 'json',
 					beforeSend: function(xhr) { 
 						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
@@ -24,7 +24,7 @@
 					},
 					error: function (jqxhr, textStatus, error)
 					{
-						listener.onError(error);
+						listener.onError({message: "Activity request failed (" + jqxhr.status + (error ? " " + error : "") + ")"});
 					}
 				});
             },
@@ -47,7 +47,7 @@
 					},
 					error: function (jqxhr, textStatus, error)
 					{
-						listener.onError(error);
+						listener.onError({message: "Activity request failed (" + jqxhr.status + (error ? " " + error : "") + ")"});
 					}
 				});
             },
@@ -70,7 +70,7 @@
 					},
 					error: function (jqxhr, textStatus, error)
 					{
-						listener.onError(error);
+						listener.onError({message: "Activity request failed (" + jqxhr.status + (error ? " " + error : "") + ")"});
 					}
 				});
             },
@@ -95,7 +95,7 @@
 					},
 					error: function (jqxhr, textStatus, error)
 					{
-						listener.onError(error);
+						listener.onError({message: "Activity request failed (" + jqxhr.status + (error ? " " + error : "") + ")"});
 					}
 				});
             },
