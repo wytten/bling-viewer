@@ -21,6 +21,7 @@ view) and returns {url} of an HLS playlist served from /live/<camera_id>/.
 POST /live/stop {camera_id} ends it; streams also stop when the player goes idle.
 
 Usage: bling-proxy.py [port]   (default 3000, listens on 127.0.0.1)
+       BLING_PROXY_DEBUG=1 bling-proxy.py   also logs small JSON response bodies
 """
 import base64
 import hashlib
@@ -44,6 +45,9 @@ from functools import partial
 from html.parser import HTMLParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
+
+# BLING_PROXY_DEBUG=1 also logs small JSON response bodies (they can contain account details).
+DEBUG = bool(os.environ.get("BLING_PROXY_DEBUG"))
 
 # Only relay to Blink's servers so this can't be used as an open proxy.
 ALLOWED_HOST = re.compile(r"(^|\.)immedia-semi\.com$")
@@ -570,6 +574,8 @@ class Handler(SimpleHTTPRequestHandler):
         with resp:
             data = resp.read()
             self.log_request(resp.status, len(data))  # include the body size in the log
+            if DEBUG and "json" in (resp.headers.get("Content-Type") or "") and len(data) <= 2000:
+                self.log_message("  body: %s", data.decode("utf-8", "replace"))
             self.send_response_only(resp.status)
             self.send_header("Server", self.version_string())
             self.send_header("Date", self.date_time_string())

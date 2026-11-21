@@ -68,8 +68,15 @@ again next time.
 ```sh
 python3 -m unittest discover tests
 ```
-The tests run the proxy against a fake Blink live view server. They need `ffmpeg` and `openssl`,
-but no network or Blink account.
+No network or Blink account needed:
+
+* `tests/test_live_view.py` runs the proxy against a fake Blink live view server (needs `ffmpeg`
+  and `openssl`).
+* `tests/test_activity.py` loads the real viewer in headless Chrome with Blink's API faked by
+  `tests/fake_blink.js`, opens Activity and checks what's drawn for clips, no clips, unexpected
+  responses and server errors (needs Google Chrome or Chromium).
+
+Tests whose tools are missing are skipped.
 
 ## Screenshots
 ### Networks
