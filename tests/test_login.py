@@ -81,16 +81,22 @@ class FakeBlinkHandler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         if url.path == "/oauth/v2/authorize" and "code_challenge" in q:
+            old = self.session()
+            if old:  # like Blink: a live session cookie is reused, not replaced
+                return self.reply(200, "<html>authorize</html>")
             sid = secrets.token_hex(8)
             self.blink.sessions[sid] = {"challenge": q["code_challenge"], "hardware_id": q["hardware_id"],
                                         "authed": False}
-            self.reply(200, "<html>authorize</html>", [("Set-Cookie", f"sess={sid}; Path=/")])
+            self.reply(200, "<html>authorize</html>",
+                       [("Set-Cookie", f"sess={sid}; Path=/; Max-Age=1200"),       # persistent, like blink-public-session
+                        ("Set-Cookie", f"csrf-protection={sid}; Path=/oauth/v2; Max-Age=86400")])
         elif url.path == "/oauth/v2/authorize":
             s = self.session()
             if not s or not s["authed"]:
                 return self.reply(401, "not signed in")
             code = secrets.token_hex(8)
             self.blink.codes[code] = s
+            s["used"] = True
             self.reply(302, headers=[("Location", f"{bp.OAUTH_REDIRECT_URI}?code={code}&state=x")])
         elif url.path == "/oauth/v2/signin":
             s = self.session()
@@ -113,8 +119,12 @@ class FakeBlinkHandler(BaseHTTPRequestHandler):
         if url.path == "/oauth/v2/signin":
             if not s or f.get("csrf-token") != s.get("csrf"):
                 return self.reply(403, {"message": "bad csrf"})
+            if s.get("used"):
+                return self.reply(401, {"message": "Invalid credentials"})  # what a stale session got from Blink
             if f.get("username") != EMAIL or f.get("password") != PASSWORD:
                 return self.reply(401, {"message": "Invalid credentials"})
+            if "remember" in self.cookies() and self.cookies()["remember"] not in self.blink.remember_tokens:
+                return self.reply(401, {"message": "Invalid credentials"})  # unknown device cookie
             remembered = self.blink.remember_tokens.get(self.cookies().get("remember"))
             if remembered and remembered == s["hardware_id"]:
                 s["authed"] = True
@@ -242,6 +252,24 @@ class LoginTest(unittest.TestCase):
         # Still remembered on the third login (cookies re-saved).
         _, asked = self.login()
         self.assertFalse(asked)
+
+    def test_saved_cookies_exclude_session_and_csrf(self):
+        self.login(remember=True)
+        with open(self.device_files()[1]) as f:
+            saved = f.read()
+        self.assertIn("remember=", saved)
+        self.assertNotIn("sess=", saved)
+        self.assertNotIn("csrf-protection=", saved)
+
+    def test_stale_session_in_old_cookie_file_is_ignored(self):
+        # A cookie file saved by an earlier version still holds the session and CSRF cookies.
+        first, _ = self.login(remember=True)
+        os.remove(self.device_files()[1])
+        login = bp.OAuthLogin(EMAIL)
+        login.start(PASSWORD)  # leaves a used session in its jar
+        login.jar.save(self.device_files()[1])
+        second, asked = self.login()
+        self.assertEqual(second["hardware_id"], first["hardware_id"])
 
     def test_remembered_device_is_per_email(self):
         self.login(remember=True)

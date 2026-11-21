@@ -69,7 +69,8 @@ refresh tokens Blink returns are kept in the browser's `localStorage`. `bling.sh
 window, so they're discarded when you close Chrome and you'll sign in again next time.
 
 Ticking **Don't ask again on this computer** when entering the 2FA PIN asks Blink to remember the
-device, and the proxy saves the device's ID and Blink's long-lived login cookies in
+device, and the proxy saves the device's ID and Blink's long-lived device cookies (never its
+session or CSRF cookies) in
 `~/.config/bling-viewer/` (owner-only; `BLING_REMEMBER_DIR` overrides). Later logins with the same
 email reuse them, so Blink can skip the PIN even from a fresh incognito window. Delete that directory
 to forget the computer; entering a PIN with the box unticked also forgets it.

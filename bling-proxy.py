@@ -180,6 +180,11 @@ def exchange(data):
     }
 
 
+# Blink's sign-in session and CSRF cookies outlive the login (blink-public-session,
+# csrf-protection); replaying them makes the next sign-in fail, so they're never remembered.
+SESSION_COOKIE = re.compile(r"sess|csrf", re.I)
+
+
 def _remember_paths():
     return os.path.join(REMEMBER_DIR, "device.json"), os.path.join(REMEMBER_DIR, "cookies.lwp")
 
@@ -206,16 +211,21 @@ def forget_device():
 class OAuthLogin:
     """One Authorization Code + PKCE login, with its own cookie jar."""
 
-    def __init__(self, email, hardware_id=None):
+    def __init__(self, email, hardware_id=None, use_cookies=True):
         self.email = email
         self.jar = http.cookiejar.LWPCookieJar()
         self.remembered = remembered_device(email)
+        self.used_cookies = False
         if self.remembered:
             hardware_id = self.remembered.get("hardware_id")
-            try:
-                self.jar.load(_remember_paths()[1])
-            except (OSError, http.cookiejar.LoadError):
-                pass
+            if use_cookies:
+                try:
+                    self.jar.load(_remember_paths()[1])
+                except (OSError, http.cookiejar.LoadError):
+                    pass
+                for c in [c for c in self.jar if SESSION_COOKIE.search(c.name)]:
+                    self.jar.clear(c.domain, c.path, c.name)  # files saved before this filter existed
+                self.used_cookies = len(self.jar) > 0
         try:
             self.hardware_id = str(uuid.UUID(hardware_id)).upper()
         except (TypeError, ValueError):
@@ -236,7 +246,11 @@ class OAuthLogin:
         try:
             with open(device_file, "w") as f:
                 json.dump({"email": self.email, "hardware_id": self.hardware_id}, f)
-            self.jar.save(cookie_file)  # persistent cookies only (session cookies are skipped)
+            keep = http.cookiejar.LWPCookieJar()
+            for c in self.jar:
+                if not SESSION_COOKIE.search(c.name):
+                    keep.set_cookie(c)
+            keep.save(cookie_file)  # persistent device cookies only
         finally:
             os.umask(old)
 
@@ -307,8 +321,16 @@ class OAuthLogin:
 def auth_login(req):
     if not req.get("email") or not req.get("password"):
         raise ApiError("Email and password are required", 400)
-    login = OAuthLogin(req["email"].strip(), req.get("hardware_id"))
-    tokens = login.start(req["password"])
+    email = req["email"].strip()
+    login = OAuthLogin(email, req.get("hardware_id"))
+    try:
+        tokens = login.start(req["password"])
+    except ApiError:
+        if not login.used_cookies:
+            raise
+        # Remembered cookies must never lock anyone out: retry once without them.
+        login = OAuthLogin(email, req.get("hardware_id"), use_cookies=False)
+        tokens = login.start(req["password"])
     if tokens:
         return tokens
     sid = secrets.token_urlsafe(16)
