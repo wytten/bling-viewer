@@ -53,6 +53,13 @@
             },
             enumerable: false
         },
+        getLastLogin : {
+            value: function(onSuccess)
+            {
+				$.ajax({type: "GET", url: "/auth/last-login", dataType: 'json', success: onSuccess});  // optional; ignore errors
+            },
+            enumerable: false
+        },
         setToken : {
             value: function(data)
             {

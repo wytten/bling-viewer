@@ -124,7 +124,7 @@ class FakeBlinkHandler(BaseHTTPRequestHandler):
                 return self.reply(403, {"message": "bad csrf"})
             if s.get("used"):
                 return self.reply(401, {"message": "Invalid credentials"})  # what a stale session got from Blink
-            if f.get("username") != EMAIL or f.get("password") != PASSWORD:
+            if f.get("username", "").strip() != EMAIL or f.get("password") != PASSWORD:
                 return self.reply(401, {"message": "Invalid credentials"})
             if "remember" in self.cookies() and self.cookies()["remember"] not in self.blink.remember_tokens:
                 return self.reply(401, {"message": "Invalid credentials"})  # unknown device cookie
@@ -318,6 +318,32 @@ class LoginTest(unittest.TestCase):
         self.assertEqual(r["hardware_id"], tokens["hardware_id"])
         status, r = self.post("/auth/refresh", {"refresh_token": "bogus", "hardware_id": tokens["hardware_id"]})
         self.assertEqual(status, 401)
+
+    def get(self, path):
+        with urllib.request.urlopen(self.base + path, timeout=20) as r:
+            return json.loads(r.read())
+
+    def test_last_login_is_remembered(self):
+        self.assertEqual(self.get("/auth/last-login"), {})
+        status, _ = self.post("/auth/login", {"email": EMAIL, "password": "wrong"})
+        self.assertEqual(status, 401)
+        self.assertEqual(self.get("/auth/last-login"), {}, "saved after a failed login")
+        self.login(email="  " + EMAIL + " ")  # PIN login; whitespace trimmed
+        self.assertEqual(self.get("/auth/last-login"), {"email": EMAIL})
+        path = os.path.join(bp.REMEMBER_DIR, "last-login.json")
+        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
+    def test_last_login_survives_forgetting_the_device(self):
+        self.login(remember=True)
+        self.blink.remember_tokens.clear()
+        self.login(remember=False)  # forgets the device
+        self.assertFalse(os.path.exists(self.device_files()[0]))
+        self.assertEqual(self.get("/auth/last-login"), {"email": EMAIL})
+
+    def test_last_login_falls_back_to_remembered_device(self):
+        self.login(remember=True)
+        os.remove(os.path.join(bp.REMEMBER_DIR, "last-login.json"))  # e.g. remembered before last-login existed
+        self.assertEqual(self.get("/auth/last-login"), {"email": EMAIL})
 
     def test_expired_or_unknown_session(self):
         status, r = self.post("/auth/verify", {"session": "nope", "pin": PIN})

@@ -78,6 +78,9 @@ session or CSRF cookies) in
 email reuse them, so Blink can skip the PIN even from a fresh incognito window. Delete that directory
 to forget the computer; entering a PIN with the box unticked also forgets it.
 
+The proxy also remembers the last email that signed in (`last-login.json` in the same directory) and
+fills it into the login form.
+
 ## Tests
 ```sh
 python3 -m unittest discover tests

@@ -6,6 +6,7 @@
     var params = new URLSearchParams(location.search);
     var fixtureName = params.get("fixture") || "empty";
     var action = params.get("action");  // "download": click every local clip's download icon
+    var mode = params.get("mode");      // "login": no saved session; check the login form
     var report = {fixture: fixtureName, requests: [], toasts: [], errors: [], downloads: []};
 
     // Record downloads (<a download> clicks) instead of saving files.
@@ -95,11 +96,13 @@
             if(mediaPage1 === null) return {status: 500, body: {message: "Internal Server Error"}};
             return $.extend({limit: 200, purge_id: 15952242263, refresh_count: 0}, mediaPage1);
         }],
+        ["GET", /^\/auth\/last-login$/, {email: "test@example.com"}],
         [/\/(thumbnail|thumb)\b/, ""],
         [/\/media\/clip\//, ""]
     ];
 
-    localStorage.setItem("bling.token", JSON.stringify({
+    if(mode == "login") localStorage.removeItem("bling.token");
+    else localStorage.setItem("bling.token", JSON.stringify({
         user: "test@example.com", access_token: "test-token", refresh_token: "test-refresh",
         hardware_id: "00000000-0000-0000-0000-000000000000", tier: "u000", account_id: 1,
         expires_at: Date.now() + 3600 * 1000
@@ -177,6 +180,10 @@
             report.emptyContrast = contrast(report.emptyColor, bg);
         }
         report.contentText = $.trim($(".content").text()).slice(0, 300);
+        report.userValue = $("#userInput").val();
+        report.userLabelFloats = $("#userInput").closest(".mdl-textfield").hasClass("is-dirty");
+        report.focused = document.activeElement && document.activeElement.id;
+        report.loginOpen = $("#login").prop("open");
         var pre = document.createElement("pre");
         pre.id = "test-result";
         pre.textContent = JSON.stringify(report);
@@ -185,6 +192,11 @@
 
     $(function()
     {
+        if(mode == "login")
+        {
+            waitFor(function() { return $("#userInput").val(); }, function() { setTimeout(finish, 300); }, 60);
+            return;
+        }
         waitFor(function() { return $(".drawer .navigation a[title=Activity]").length && $("#toast")[0].MaterialSnackbar; }, function()
         {
             var snackbar = $("#toast")[0].MaterialSnackbar;

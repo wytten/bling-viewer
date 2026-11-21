@@ -41,13 +41,13 @@ class ActivityTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
 
-    def run_activity(self, fixture, action=""):
+    def run_activity(self, fixture, action="", mode=""):
         profile = tempfile.mkdtemp(prefix="bling-activity-test-")
         try:
             dom = subprocess.run(
                 [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                  f"--user-data-dir={profile}", "--virtual-time-budget=30000", "--dump-dom",
-                 f"{self.base}/tests/activity_harness.html?fixture={fixture}&action={action}"],
+                 f"{self.base}/tests/activity_harness.html?fixture={fixture}&action={action}&mode={mode}"],
                 capture_output=True, text=True, timeout=90).stdout
         finally:
             shutil.rmtree(profile, ignore_errors=True)
@@ -128,6 +128,15 @@ class ActivityTest(unittest.TestCase):
     def test_cloud_clips_have_no_download_icon(self):
         r = self.run_activity("clips", action="download")
         self.assertEqual(r["downloads"], [])
+
+    def test_login_form_prefills_last_login(self):
+        r = self.run_activity("empty", mode="login")
+        self.assertEqual(r["errors"], [])
+        self.assertTrue(r["loginOpen"])
+        self.assertIn("GET /auth/last-login", r["requests"])
+        self.assertEqual(r["userValue"], "test@example.com")
+        self.assertTrue(r["userLabelFloats"], "label overlaps the prefilled name")
+        self.assertEqual(r["focused"], "passwordInput")
 
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")

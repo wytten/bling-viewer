@@ -61,6 +61,17 @@
             },
             enumerable: false
         },
+        prefillLogin : {
+            value: function()
+            {
+                var self = this;
+                this.interactor.getLastLogin(function(data)
+                {
+                    if(data && data.email) self.loginView.prefillUser(data.email);
+                });
+            },
+            enumerable: false
+        },
         // Apply a token response from bling-proxy.py, persist it, and schedule its refresh.
         onTokens : {
             value: function(data, user)

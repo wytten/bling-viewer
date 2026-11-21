@@ -15,6 +15,7 @@ With remember, Blink's long-lived login cookies and the device's hardware_id are
 under ~/.config/bling-viewer/ (BLING_REMEMBER_DIR overrides) so later logins with the
 same email can skip the 2FA pin.
   POST /auth/refresh  {refresh_token, hardware_id}    -> tokens
+  GET  /auth/last-login                               -> {email} of the last sign-in, or {}
 
 "tokens" is {access_token, refresh_token, expires_in, hardware_id, tier, account_id}.
 
@@ -320,6 +321,34 @@ class OAuthLogin:
             "scope": OAUTH_SCOPE})
 
 
+def _last_login_path():
+    return os.path.join(REMEMBER_DIR, "last-login.json")
+
+
+def save_last_login(email):
+    """Remember the last email that signed in, to prefill the login form."""
+    os.makedirs(REMEMBER_DIR, mode=0o700, exist_ok=True)
+    old = os.umask(0o077)
+    try:
+        with open(_last_login_path(), "w") as f:
+            json.dump({"email": email}, f)
+    finally:
+        os.umask(old)
+
+
+def auth_last_login(req=None):
+    email = None
+    for path in (_last_login_path(), _remember_paths()[0]):  # fall back to a remembered device
+        try:
+            with open(path) as f:
+                email = json.load(f).get("email")
+        except (OSError, ValueError):
+            continue
+        if email:
+            break
+    return {"email": email} if email else {}
+
+
 def auth_login(req):
     if not req.get("email") or not req.get("password"):
         raise ApiError("Email and password are required", 400)
@@ -335,6 +364,7 @@ def auth_login(req):
         login = OAuthLogin(email, req.get("hardware_id"), use_cookies=False)
         tokens = login.start(req["password"])
     if tokens:
+        save_last_login(email)
         return tokens
     sid = secrets.token_urlsafe(16)
     with pending_lock:
@@ -351,6 +381,7 @@ def auth_verify(req):
     if not login or time.time() - login.created > PENDING_TTL:
         raise ApiError("Login expired, sign in again")
     tokens = login.verify(str(req.get("pin", "")).strip(), bool(req.get("remember")))
+    save_last_login(login.email)
     with pending_lock:
         pending.pop(req.get("session"), None)
     return tokens
@@ -572,6 +603,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self._is_relay():
             self.relay()
+        elif self.path == "/auth/last-login":
+            self.json_route(auth_last_login)
         elif self.path.startswith("/live/"):
             self.live_file()
         else:

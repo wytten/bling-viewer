@@ -36,6 +36,7 @@
                     componentHandler.upgradeAllRegistered();
                     
                     self.presenter.checkToken();
+                    self.presenter.prefillLogin();
                 });
             },
             enumerable: false
@@ -52,6 +53,19 @@
                 
                 var dashboard = $("<a/>", {id: "dashboard", class: "link selected", href: "#", title: "Cameras", html: "<i class='fas fa-home'></i>"});
                 dashboard.appendTo($(".drawer .navigation"));
+            },
+            enumerable: false
+        },
+		// Fill in the last login name (unless something was typed already) and go to the password.
+		prefillUser : {
+            value: function(email)
+            {
+                var user = $("#login .user");
+                if(user.val()) return;
+                user.val(email);
+                var field = user.closest(".mdl-textfield")[0];
+                if(field && field.MaterialTextfield) field.MaterialTextfield.checkDirty();  // float the label
+                $("#login .password").focus();
             },
             enumerable: false
         },
