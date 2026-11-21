@@ -131,11 +131,11 @@
             enumerable: false
         },
         requestJoin : {
-            value: function(camera, url, onSuccess)
+            value: function(camera, live, onSuccess)
             {
                 var self = this;
                     
-                this.interactor.requestJoin(camera, url, new blink.listeners.BaseDecisionListener(
+                this.interactor.requestJoin(camera, live, new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
                         onSuccess(data);
@@ -143,6 +143,7 @@
                     function(data)
                     {
                         self.cameraView.showError(data);
+                        self.cameraView.onUnjoin(data, camera);  // re-enable the live view button
                     }));
             },
             enumerable: false

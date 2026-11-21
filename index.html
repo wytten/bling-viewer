@@ -105,8 +105,8 @@
     
         var server = "immedia-semi.com";
         var credentials = {region: "", token: ""};
-        // camera id -> Blink product type ("catalina", "sedona", "owl", ...), filled from homescreen
-        var cameraTypes = $.Deferred();
+        // camera id -> {type: Blink product type ("catalina", "owl", ...), serial}, filled from homescreen
+        var cameraInfo = $.Deferred();
 
         var g_user;
         

@@ -322,7 +322,7 @@
                 var card = $("#card" + camera_id);
                 card.find(".live-view-button").attr("disabled", true);
                 
-                self.presenter.requestJoin(camera_id, data.server, self.onJoin);
+                self.presenter.requestJoin(camera_id, data, self.onJoin);
             },
             enumerable: false
         },

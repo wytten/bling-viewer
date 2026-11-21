@@ -35,13 +35,13 @@
         //   "1700000000"                                   just a timestamp, build the v3 path
         //   "/media/production/.../thumbnail"              legacy, append ".jpg"
         thumbnailPath : {
-            value: function(camera, types)
+            value: function(camera, info)
             {
 				var thumb = String(camera.thumbnail || "");
 				if(/^\d+$/.test(thumb))
 				{
 					return "/api/v3/media/accounts/" + credentials.account.id + "/networks/" + camera.network_id +
-						"/" + (camera.type || types[camera.camera_id] || "catalina") + "/" + camera.camera_id + "/thumbnail/thumbnail.jpg?ts=" + thumb + "&ext=";
+						"/" + (camera.type || (info[camera.camera_id] || {}).type || "catalina") + "/" + camera.camera_id + "/thumbnail/thumbnail.jpg?ts=" + thumb + "&ext=";
 				}
 				if(/&ext=$/.test(thumb) || /\.jpg(\?|$)/.test(thumb))
 				{
@@ -56,9 +56,9 @@
             {
 				var self = this;
 				// A bare-timestamp thumbnail needs the camera's product type, which only the homescreen has.
-				cameraTypes.done(function(types)
+				cameraInfo.done(function(info)
 				{
-					var path = self.thumbnailPath(camera, types);
+					var path = self.thumbnailPath(camera, info);
 					var url = /^https?:/.test(path) ? path : "https://rest-" + credentials.region + "." + server + path;
 					$.ajax
 					({
@@ -107,22 +107,33 @@
         requestLiveView : {
             value: function(network, camera, listener)
             {
-				$.ajax
-				({
-					type: "POST",
-					url: "https://rest-" + credentials.region + "." + server + "/api/v5/accounts/" + credentials.account.id + "/networks/" + network + "/cameras/" + camera + "/liveview",
-                    dataType: 'json',
-					beforeSend: function(xhr) {                        
-						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
-					},
-					success: function (data)
-					{
-						listener.onSuccess(data);
-					},
-					error: function (jqxhr, textStatus, error)
-					{
-						listener.onError(jqxhr.responseJSON);
-					}
+				cameraInfo.done(function(info)
+				{
+					var type = (info[camera] || {}).type;
+					var base = "https://rest-" + credentials.region + "." + server;
+					var path = /^(owl|hawk)$/.test(type) ? "/api/v2/accounts/" + credentials.account.id + "/networks/" + network + "/owls/" + camera + "/liveview"
+						: type == "lotus" ? "/api/v2/accounts/" + credentials.account.id + "/networks/" + network + "/doorbells/" + camera + "/liveview"
+						: "/api/v6/accounts/" + credentials.account.id + "/networks/" + network + "/cameras/" + camera + "/liveview";
+					$.ajax
+					({
+						type: "POST",
+						url: base + path,
+						data: JSON.stringify({intent: "liveview", motion_event_start_time: null}),
+						contentType: 'application/json',
+						dataType: 'json',
+						beforeSend: function(xhr) {
+							xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
+						},
+						success: function (data)
+						{
+							data.network_id = network;
+							listener.onSuccess(data);
+						},
+						error: function (jqxhr, textStatus, error)
+						{
+							listener.onError(jqxhr.responseJSON || {message: "Live view request failed (" + jqxhr.status + ")"});
+						}
+					});
 				});
             },
             enumerable: false
@@ -196,52 +207,58 @@
             },
             enumerable: false
         },
+        // bling-proxy.py turns Blink's immis stream into HLS (this used to be Bling Desktop on :9192).
         requestJoin : {
-            value: function(camera, url, listener)
+            value: function(camera, live, listener)
             {
-                if(url.substring(0, 8) == "immis://")
-                {
-                    url = "rtsps://" + url.substring(8) + "&blinkRTSP=true";
-                }
-                
-				$.ajax
-				({
-					type: "POST",
-					url: "http://127.0.0.1:9192",
-                    data: JSON.stringify({camera_id: camera, url: url}),
-                    dataType: 'json',
-                    contentType: 'application/json',
-					success: function (data)
-					{
-						listener.onSuccess(data);
-					},
-					error: function (jqxhr, textStatus, error)
-					{
-						listener.onError(jqxhr.responseJSON);
-					}
+				cameraInfo.done(function(info)
+				{
+					$.ajax
+					({
+						type: "POST",
+						url: "/live/start",
+						data: JSON.stringify({
+							camera_id: camera, network_id: live.network_id, serial: (info[camera] || {}).serial,
+							server: live.server, command_id: live.command_id, polling_interval: live.polling_interval,
+							token: credentials.token, region: credentials.region
+						}),
+						dataType: 'json',
+						contentType: 'application/json',
+						success: function (data)
+						{
+							listener.onSuccess(data);
+						},
+						error: function (jqxhr, textStatus, error)
+						{
+							listener.onError(jqxhr.responseJSON || {message: "Live view failed (" + jqxhr.status + "); restart bling-proxy.py"});
+						}
+					});
 				});
             },
             enumerable: false
         },
         requestUnjoin : {
-            value: function( camera, listener)
+            value: function(camera, listener)
             {
 				$.ajax
 				({
-					type: "DELETE",
-					url: "http://127.0.0.1:9192?camera_id=" + camera,
+					type: "POST",
+					url: "/live/stop",
+					data: JSON.stringify({camera_id: camera}),
+					dataType: 'json',
+					contentType: 'application/json',
 					success: function (data)
 					{
 						listener.onSuccess(data);
 					},
 					error: function (jqxhr, textStatus, error)
 					{
-						listener.onError(error);
+						listener.onError(jqxhr.responseJSON || {message: "Stopping live view failed (" + jqxhr.status + ")"});
 					}
 				});
             },
             enumerable: false
-        },
+        }
     });
 
     interactors.CameraInteractor = CameraInteractor;
