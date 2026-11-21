@@ -94,7 +94,7 @@
         </div>
     </body>
     <script>
-        // When served by bling-proxy.pl, route cross-origin requests through it
+        // When served by bling-proxy.py, route cross-origin requests through it
         // ("/https://host/path") so CORS is handled without --disable-web-security.
         $.ajaxPrefilter(function( options ){
             if (/^https?:$/.test(location.protocol) && /^https?:\/\//.test(options.url)
