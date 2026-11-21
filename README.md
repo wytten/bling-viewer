@@ -11,7 +11,9 @@ an ordinary Chrome window on Linux or macOS.
 Requirements: Python 3, Google Chrome, and `ffmpeg` (live view only).
 
 ```sh
-./bling.sh [port]    # default 3000
+./bling.sh [port]            # start the proxy if needed and open the viewer (default port 3000)
+./bling.sh restart [port]    # restart the proxy, e.g. after changing bling-proxy.py
+./bling.sh stop [port]       # stop the proxy
 ```
 
 `bling.sh` starts the proxy if nothing is listening on the port yet and opens the viewer in an
@@ -21,8 +23,8 @@ the script's terminal or launcher exits, and logs to `${TMPDIR:-/tmp}/bling-prox
 To launch it from anywhere, symlink it onto your `PATH`, e.g.
 `ln -s "$PWD/bling.sh" ~/bin/bling.sh`; it finds the viewer through the symlink.
 
-After pulling changes to `bling-proxy.py`, stop the running proxy so `bling.sh` starts the new one.
-Changes to `index.html` or `js/` only need a page reload.
+After pulling changes to `bling-proxy.py`, run `./bling.sh restart` and reload the page (you stay
+signed in). Changes to `index.html` or `js/` only need a page reload.
 
 You can also run the proxy by hand: `./bling-proxy.py [port]` (default 3000, listens on
 127.0.0.1 only), then open `http://localhost:3000/`.
