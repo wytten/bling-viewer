@@ -29,11 +29,11 @@
             enumerable: false
         },
         getThumbnail : {
-            value: function(path, onSuccess)
+            value: function(camera, onSuccess)
             {
                 var self = this;
                     
-                this.interactor.getThumbnail(path, new blink.listeners.BaseDecisionListener(
+                this.interactor.getThumbnail(camera, new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
                         onSuccess(data);

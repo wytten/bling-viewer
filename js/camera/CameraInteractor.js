@@ -30,13 +30,36 @@
             },
             enumerable: false
         },
-        getThumbnail : {
-            value: function(path, listener)
+        // Blink's "thumbnail" field comes in three shapes (same handling as blinkpy):
+        //   "/api/v3/media/...thumbnail.jpg?ts=...&ext="  current full path, use as is
+        //   "1700000000"                                   just a timestamp, build the v3 path
+        //   "/media/production/.../thumbnail"              legacy, append ".jpg"
+        thumbnailPath : {
+            value: function(camera)
             {
+				var thumb = String(camera.thumbnail || "");
+				if(/^\d+$/.test(thumb))
+				{
+					return "/api/v3/media/accounts/" + credentials.account.id + "/networks/" + camera.network_id +
+						"/" + (camera.type || "catalina") + "/" + camera.camera_id + "/thumbnail/thumbnail.jpg?ts=" + thumb + "&ext=";
+				}
+				if(/&ext=$/.test(thumb) || /\.jpg(\?|$)/.test(thumb))
+				{
+					return thumb;
+				}
+				return thumb + ".jpg";
+            },
+            enumerable: false
+        },
+        getThumbnail : {
+            value: function(camera, listener)
+            {
+				var path = this.thumbnailPath(camera);
+				var url = /^https?:/.test(path) ? path : "https://rest-" + credentials.region + "." + server + path;
 				$.ajax
 				({
 					type: "GET",
-					url: "https://rest-" + credentials.region + "." + server + path + ".jpg",
+					url: url,
                     mimeType: "text/plain; charset=x-user-defined",
 					beforeSend: function(xhr) {                        
 						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);

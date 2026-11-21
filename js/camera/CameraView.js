@@ -207,7 +207,7 @@
         getThumbnail : {
             value: function(card, data)
             {
-                self.presenter.getThumbnail(data.thumbnail, function(thumbnail)
+                self.presenter.getThumbnail(data, function(thumbnail)
                 {
                     var image = card.find(".mdl-card__title");
                     image.css("background-image", "url('data:image/png;base64," + thumbnail + "')");
