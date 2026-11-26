@@ -63,8 +63,38 @@
                 self.getThumbnail(card, data);
                 
                 card.appendTo($("#networkContainer").find(".cameraContainer"));
+                if(self.cardWidth) self.sizeCards(self.cardWidth);
+                else self.fitCards();
                 
                 componentHandler.upgradeDom();
+            },
+            enumerable: false
+        },
+        // Size every card to width px (the height keeps the image's proportions).
+        sizeCards : {
+            value: function(width)
+            {
+                var card = $(".demo-card-square");
+                card.css("width", width + "px");
+                card.css("height", (width * 0.564375 + 101.4) + "px");
+            },
+            enumerable: false
+        },
+        // Until the slider is moved, fit the cards two across the content (one if two
+        // would be narrower than 320px), again whenever its width changes.
+        fitCards : {
+            value: function()
+            {
+                var grid = $("#networkContainer .cameraContainer");
+                if(self.cardWidth || !grid.length) return;
+                var gap = 10;  // each card's margin-right
+                var avail = grid.width();
+                var columns = avail >= 2 * (320 + gap) ? 2 : 1;
+                var width = Math.floor(avail / columns - gap);
+                self.sizeCards(width);
+                var slider = $("#camera_slider");
+                slider.attr("max", Math.max(800, Math.ceil(width / 50) * 50));
+                if(slider[0] && slider[0].MaterialSlider) slider[0].MaterialSlider.change(width);
             },
             enumerable: false
         },
@@ -188,23 +218,25 @@
             {
                 $(".content").html("");
                     
-                var slider = $("<input/>", {class: "mdl-slider mdl-js-slider", type: "range", id: "camera_slider", title: "Card size", min: "320", max: "800", value: "320", step:"50"});
+                var slider = $("<input/>", {class: "mdl-slider mdl-js-slider", type: "range", id: "camera_slider", title: "Card size", min: "320", max: "800", value: self.cardWidth || "320", step:"50"});
                 var sizer = $("<div/>", {id: "card-size"});
                 $("<label/>", {for: "camera_slider", text: "Card size"}).appendTo(sizer);
                 slider.appendTo(sizer);
                 sizer.appendTo($(".content"));
                 slider.change(function()
                 {
-                    var value = $(this).val();
-                    
-                    var rest = ((value - 320) / 50) * 16 + 1;
-                    
-                    var card = $(".demo-card-square");
-                    card.css("width", "" + value + "px");
-                    card.css("height", "" + (value * 0.884375 - rest) + "px");
+                    self.cardWidth = Number($(this).val());  // chosen: stop fitting
+                    self.sizeCards(self.cardWidth);
                 });
                 
                 componentHandler.upgradeDom();
+
+                // .content narrows when its scrollbar appears, as well as with the window.
+                if(!self.resizeObserver && window.ResizeObserver)
+                {
+                    self.resizeObserver = new ResizeObserver(function() { self.fitCards(); });
+                    self.resizeObserver.observe($(".content")[0]);
+                }
             },
             enumerable: false
         },

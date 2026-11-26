@@ -6,7 +6,8 @@
     var params = new URLSearchParams(location.search);
     var fixtureName = params.get("fixture") || "empty";
     var action = params.get("action");  // "download": click every local clip's download icon;
-                                        // "signout": click Sign out, then report the login form
+                                        // "signout": click Sign out, then report the login form;
+                                        // "cameras": stay on the cameras and report their cards
     var mode = params.get("mode");      // "login": no saved session; check the login form
     var proxy = params.get("proxy");    // "public": bling-proxy.py run with BLING_PUBLIC=1
     var lastUser = params.get("lastuser");  // the email this browser last signed in with
@@ -210,6 +211,32 @@
             // Done when the email is filled in, or (public, nothing saved here) remember is relabelled.
             waitFor(function() { return $("#userInput").val() || /browser/.test($("#login .remember").closest("label").text()); },
                     function() { setTimeout(finish, 300); }, 60);
+            return;
+        }
+        if(action == "cameras")
+        {
+            waitFor(function() { return $(".demo-card-square").length >= 2 && $("#camera_slider")[0].MaterialSlider; }, function()
+            {
+                setTimeout(function()
+                {
+                    var grid = $("#networkContainer .cameraContainer");
+                    report.gridWidth = grid.width();
+                    report.cards = $(".demo-card-square").map(function()
+                    {
+                        var r = this.getBoundingClientRect();
+                        return {left: Math.round(r.left - grid.offset().left - parseFloat(grid.css("padding-left"))), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height)};
+                    }).get();
+                    report.sliderValue = Number($("#camera_slider").val());
+                    $("#camera_slider").val(420).change();
+                    report.widthAfterSlider = Math.round($(".demo-card-square")[0].getBoundingClientRect().width);
+                    $(window).trigger("resize");
+                    setTimeout(function()
+                    {
+                        report.widthAfterResize = Math.round($(".demo-card-square")[0].getBoundingClientRect().width);
+                        finish();
+                    }, 300);
+                }, 500);
+            });
             return;
         }
         waitFor(function() { return $(".drawer .navigation a[title=Activity]").length && $("#toast")[0].MaterialSnackbar; }, function()

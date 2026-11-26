@@ -41,12 +41,13 @@ class ActivityTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
 
-    def run_activity(self, fixture, action="", mode="", extra=""):
+    def run_activity(self, fixture, action="", mode="", extra="", size="1280,900"):
         profile = tempfile.mkdtemp(prefix="bling-activity-test-")
         try:
             dom = subprocess.run(
                 [CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                  f"--user-data-dir={profile}", "--virtual-time-budget=30000", "--dump-dom",
+                 f"--window-size={size}",
                  f"{self.base}/tests/activity_harness.html?fixture={fixture}&action={action}&mode={mode}{extra}"],
                 capture_output=True, text=True, timeout=90).stdout
         finally:
@@ -164,6 +165,25 @@ class ActivityTest(unittest.TestCase):
         self.assertTrue(r["loginOpen"])
         self.assertFalse(r["signoutShown"])
         self.assertEqual(r["userValue"], "test@example.com")
+
+    def test_two_cards_fill_the_width(self):
+        r = self.run_activity("empty", action="cameras")
+        self.assertEqual(r["errors"], [])
+        a, b = r["cards"][:2]
+        self.assertEqual(a["top"], b["top"], "second card wrapped")
+        self.assertGreater(a["width"], 320)
+        self.assertLessEqual(b["left"] + b["width"] + 10, r["gridWidth"])
+        self.assertGreater(b["left"] + b["width"] + 10, r["gridWidth"] - 4, "cards don't fill the width")
+        self.assertLessEqual(abs(r["sliderValue"] - a["width"]), 25)  # nearest 50px step
+        # Once the slider is moved, its size sticks.
+        self.assertEqual((r["widthAfterSlider"], r["widthAfterResize"]), (420, 420))
+
+    def test_one_card_across_a_narrow_window(self):
+        r = self.run_activity("empty", action="cameras", size="500,800")
+        self.assertEqual(r["errors"], [])
+        a, b = r["cards"][:2]
+        self.assertLess(a["top"], b["top"])
+        self.assertGreater(a["width"] + 10, r["gridWidth"] - 4)
 
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")

@@ -189,7 +189,7 @@
 .demo-card-square > .mdl-card__title .mdl-spinner 
 {
   position:absolute;
-  left: calc(160px - 22px);
+  left: calc(50% - 22px);
   display:none;
 }
 
