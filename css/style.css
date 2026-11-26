@@ -151,14 +151,78 @@
       display: flex;
   }
 
-  .content .activityBody > .tableContainer
-  {
-      height: auto;
-  }
 
   .content ul.activity li.filtered
   {
       display: none;
+  }
+
+  .content .clipColumn
+  {
+      width: 200px;
+      display: flex;
+      flex-direction: column;
+  }
+
+  .content .clipColumn > .tableContainer
+  {
+      flex: 1;
+      min-height: 0;
+      height: auto;
+  }
+
+  .content .clipTools
+  {
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 36px;
+      padding: 0 6px;
+      background-color: #222;
+      color: #fff;
+      font-size: 13px;
+  }
+
+  .content .clipTools label
+  {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+  }
+
+  .content .clipTools .deleteClips
+  {
+      background: none;
+      border: 1px solid #888;
+      border-radius: 3px;
+      color: #fff;
+      padding: 3px 8px;
+      cursor: pointer;
+  }
+
+  .content .clipTools .deleteClips:disabled
+  {
+      color: #777;
+      border-color: #555;
+      cursor: default;
+  }
+
+  .content ul.activity li
+  {
+      position: relative;
+  }
+
+  .content ul.activity li .pick
+  {
+      position: absolute;
+      left: 6px;
+      bottom: 8px;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      cursor: pointer;
   }
 
     .content .tableContainer, .content .videoContainer .mdl-progress

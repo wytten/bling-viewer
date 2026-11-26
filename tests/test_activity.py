@@ -205,6 +205,34 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual(barn["message"], "No clips for Barn.")
         self.assertEqual(r["items"], 5)  # all still listed, only hidden
 
+    def test_select_and_delete_clips(self):
+        r = self.run_activity("mixed", action="delete")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["toolsAtStart"], {"all": False, "some": False, "button": "Delete", "disabled": True})
+        self.assertEqual(r["toolsAllPicked"], {"all": True, "some": False, "button": "Delete (4)", "disabled": False})
+        self.assertTrue(r["selectedUnchangedByPick"], "ticking a box played the clip")
+        self.assertEqual(r["toolsTwoPicked"], {"all": False, "some": True, "button": "Delete (2)", "disabled": False})
+        self.assertEqual(len(r["confirms"]), 1)
+        self.assertIn("Delete 2 clips?", r["confirms"][0])
+        self.assertIn("Sync Module", r["confirms"][0])
+        self.assertEqual(r["posts"], [
+            {"url": "/api/v1/accounts/1/media/delete", "data": {"media_list": [101]}},
+            {"url": "/api/v1/accounts/1/networks/1/sync_modules/5/local_storage/manifest/77/clip/delete/5002", "data": None}])
+        # Gone from the list; the next clip is now selected (playing).
+        self.assertEqual(r["remaining"], ["Front door*", "Laundry"])
+        self.assertEqual(r["toolsAfter"], {"all": False, "some": False, "button": "Delete", "disabled": True})
+        self.assertEqual(r["toasts"], [])
+
+    def test_failed_delete_keeps_the_clips(self):
+        r = self.run_activity("mixedfail", action="delete")
+        self.assertEqual(len(r["errors"]), 1)
+        self.assertIn("Some clips weren't deleted", r["errors"][0])  # showError logs it too
+        # The cloud delete failed: that clip stays (still ticked); the local one went.
+        self.assertEqual([t.rstrip("*") for t in r["remaining"]], ["Front door", "Front door", "Laundry"])
+        self.assertEqual(r["toolsAfter"]["button"], "Delete (1)")
+        self.assertEqual(len(r["toasts"]), 1)
+        self.assertIn("Some clips weren't deleted", r["toasts"][0])
+
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")
         self.assertEqual(r["errors"], [])

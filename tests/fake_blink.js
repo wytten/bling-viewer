@@ -8,11 +8,13 @@
     var action = params.get("action");  // "download": click every local clip's download icon;
                                         // "signout": click Sign out, then report the login form;
                                         // "cameras": stay on the cameras and report their cards;
-                                        // "locations": on Activity, click each location tab
+                                        // "locations": on Activity, click each location tab;
+                                        // "delete": select clips on Activity and delete them
     var mode = params.get("mode");      // "login": no saved session; check the login form
     var proxy = params.get("proxy");    // "public": bling-proxy.py run with BLING_PUBLIC=1
     var lastUser = params.get("lastuser");  // the email this browser last signed in with
-    var report = {fixture: fixtureName, requests: [], toasts: [], errors: [], downloads: []};
+    var report = {fixture: fixtureName, requests: [], toasts: [], errors: [], downloads: [], posts: [], confirms: []};
+    window.confirm = function(message) { report.confirms.push(message); return true; };
 
     // Record downloads (<a download> clicks) instead of saving files.
     var anchorClick = HTMLAnchorElement.prototype.click;
@@ -51,6 +53,7 @@
         localempty: {cloud: noCloud, local: "empty"},
         localfail: {cloud: noCloud, local: "fail"},       // manifest command fails
         mixed: {cloud: {media: [clip(101, 5, "Front door"), clip(103, 120, "Laundry")]}, local: "clips"},
+        mixedfail: {cloud: {media: [clip(101, 5, "Front door"), clip(103, 120, "Laundry")]}, local: "clips", deleteFails: true},
         // Two locations; the third ("Barn") has no clips.
         locations: {cloud: {media: [clip(101, 5, "Front door"), $.extend(clip(201, 20, "Dock"), {network_id: 2, network_name: "Cabin"}),
                                     clip(103, 120, "Laundry")]}, local: "clips",
@@ -68,6 +71,8 @@
         [/\/api\/v1\/camera\/usage$/, {networks: fixture.networks || [{network_id: 1, name: "Home",
             cameras: [{id: 10, name: "Front door"}, {id: 11, name: "Laundry"}]}]}],
         [/\/network\/[23]$/, {devicestatus: []}],
+        ["POST", /\/api\/v1\/accounts\/1\/media\/delete$/, function() { return fixture.deleteFails ? {status: 400, body: {message: "nope"}} : {}; }],
+        ["POST", new RegExp(LS + "/manifest/77/clip/delete/(\\d+)$"), ""],
         [/\/api\/v3\/accounts\/1\/homescreen$/, {cameras: [{id: 10, name: "Front door", type: "catalina", serial: "A1"},
             {id: 11, name: "Laundry", type: "catalina", serial: "A2"}], owls: [], doorbells: [],
             sync_modules: fixture.local ? [
@@ -129,6 +134,7 @@
     {
         var url = opts.url;
         report.requests.push((opts.type || "GET") + " " + url.replace(/^https:\/\/rest-u000\.immedia-semi\.com/, ""));
+        if(/delete/.test(url)) report.posts.push({url: url.replace(/^https:\/\/rest-u000\.immedia-semi\.com/, ""), data: opts.data ? JSON.parse(opts.data) : null});
         var method = (opts.type || "GET").toUpperCase();
         var reply = {status: 404, body: {message: "No fake for " + method + " " + url}};
         for(var i = 0; i < routes.length; i++)
@@ -276,6 +282,38 @@
                     if(!$("#signout").is(":visible")) { report.errors.push("Sign out not shown"); finish(); return; }
                     sessionStorage.setItem("bling.test.signedOut", "1");
                     $("#signout").click();  // reloads the page
+                    return;
+                }
+                if(action == "delete")
+                {
+                    var tools = function()
+                    {
+                        var all = $(".clipTools .selectAll");
+                        return {all: all.prop("checked"), some: all.prop("indeterminate"),
+                                button: $.trim($(".clipTools .deleteClips").text()), disabled: $(".clipTools .deleteClips").prop("disabled")};
+                    };
+                    var titles = function() { return $("ul.activity li").map(function() { return $(this).attr("title").split(" – ")[0] + ($(this).hasClass("selected") ? "*" : ""); }).get(); };
+                    report.toolsAtStart = tools();
+                    $(".clipTools .selectAll").prop("checked", true).change();
+                    report.toolsAllPicked = tools();
+                    $(".clipTools .selectAll").prop("checked", false).change();
+                    // Pick the playing cloud clip (Front door, newest) and the local Laundry clip.
+                    var lis = $("ul.activity li");
+                    var before = titles();
+                    lis.eq(0).find(".pick").click();
+                    lis.eq(1).find(".pick").click();
+                    report.selectedUnchangedByPick = JSON.stringify(titles()) == JSON.stringify(before);
+                    report.toolsTwoPicked = tools();
+                    $(".clipTools .deleteClips").click();
+                    waitFor(function() { return !$(".clipTools .deleteClips").hasClass("busy"); }, function()
+                    {
+                        setTimeout(function()
+                        {
+                            report.remaining = titles();
+                            report.toolsAfter = tools();
+                            finish();
+                        }, 300);
+                    });
                     return;
                 }
                 if(action == "locations")

@@ -55,6 +55,27 @@
             },
             enumerable: false
         },
+        // Delete clips: cloud ones in one request, Sync Module ones one at a time.
+        // onDeleted(clip) for each gone, then onDone(errors).
+        deleteClips : {
+            value: function(clips, onDeleted, onDone)
+            {
+                var cloud = $.grep(clips, function(c) { return c.cloudId != null; });
+                var local = $.grep(clips, function(c) { return c.local; });
+                var errors = [];
+                var nextLocal = function(i)
+                {
+                    if(i >= local.length) { onDone(errors); return; }
+                    local[i].remove(function() { onDeleted(local[i]); nextLocal(i + 1); },
+                                    function(e) { errors.push(e); nextLocal(i + 1); });
+                };
+                if(!cloud.length) { nextLocal(0); return; }
+                this.interactor.deleteCloudMedia($.map(cloud, function(c) { return c.cloudId; }),
+                    function() { $.each(cloud, function(i, c) { onDeleted(c); }); nextLocal(0); },
+                    function(e) { errors.push(e); nextLocal(0); });
+            },
+            enumerable: false
+        },
         getVideos : {
             value: function(page, callback, onError)
             {
@@ -109,6 +130,10 @@
                                     name: names[c.camera_name] || c.camera_name,
                                     network_id: m.network_id,
                                     local: true,
+                                    remove: function(onDone, onError)
+                                    {
+                                        self.interactor.deleteLocalClip(m.network_id, m.id, manifest.manifest_id, c.id, onDone, onError);
+                                    },
                                     play: function(onUrl, onError)
                                     {
                                         if(url) { onUrl(url); return; }

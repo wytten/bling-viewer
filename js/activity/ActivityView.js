@@ -46,7 +46,11 @@
             value: function(cameras, networks)
             {
                 $(".content").html("<div class='activityPage'><ul class='tabs'></ul><div class='activityBody'>" +
-                                    "<div class='tableContainer'><ul class='activity display' width='100%'></ul></div>" +
+                                    "<div class='clipColumn'><div class='clipTools'>" +
+                                    "<label title='Select every clip shown'><input type='checkbox' class='selectAll'/>All</label>" +
+                                    "<button class='deleteClips' type='button' disabled title='Delete the selected clips'>" +
+                                    "<i class='fas fa-trash-alt'></i> <span>Delete</span></button></div>" +
+                                    "<div class='tableContainer'><ul class='activity display' width='100%'></ul></div></div>" +
                                     "<div class='videoContainer'></div></div></div>");
                 
                 this.cameras = cameras;
@@ -69,6 +73,8 @@
                         $(this).addClass("active").siblings().removeClass("active");
                         self.network = network;
                         $("ul.activity li").each(function() { $(this).toggleClass("filtered", !self.shows(this)); });
+                        $("ul.activity li.filtered .pick").prop("checked", false);  // only delete what's shown
+                        self.updateTools();
                         settle();
                     }).appendTo(tabs);
                 };
@@ -106,11 +112,20 @@
                     }
                 };
 
+                self.settle = settle;
+
                 var sourceDone = function()
                 {
                     --sources;
                     settle();
                 };
+
+                $(".clipTools .selectAll").change(function()
+                {
+                    $("ul.activity li").not(".filtered").find(".pick").prop("checked", this.checked);
+                    self.updateTools();
+                });
+                $(".clipTools .deleteClips").click(function() { self.deletePicked(); });
 
                 self.loadVideos(page, function(m) { cloudMore = m; sourceDone(); });
 
@@ -125,6 +140,53 @@
                     {
                         more();
                     }
+                });
+            },
+            enumerable: false
+        },
+        // The selected clips shown, and the Select all / Delete controls to match.
+        picked : {
+            value: function()
+            {
+                return $("ul.activity li").not(".filtered").filter(function() { return $(this).find(".pick").prop("checked"); });
+            },
+            enumerable: false
+        },
+        updateTools : {
+            value: function()
+            {
+                var shown = $("ul.activity li").not(".filtered").length;
+                var n = self.picked().length;
+                var all = $(".clipTools .selectAll");
+                all.prop("checked", n > 0 && n == shown).prop("indeterminate", n > 0 && n < shown);
+                var button = $(".clipTools .deleteClips");
+                if(button.hasClass("busy")) return;
+                button.prop("disabled", n == 0).find("span").text(n ? "Delete (" + n + ")" : "Delete");
+            },
+            enumerable: false
+        },
+        deletePicked : {
+            value: function()
+            {
+                var lis = self.picked();
+                if(!lis.length) return;
+                var where = lis.filter(function() { return $(this).data("clip").local; }).length ? " Clips on a Sync Module are deleted from it too." : "";
+                if(!window.confirm("Delete " + lis.length + " clip" + (lis.length == 1 ? "" : "s") + "? This can't be undone." + where)) return;
+
+                var button = $(".clipTools .deleteClips").addClass("busy").prop("disabled", true);
+                button.find("span").text("Deleting…");
+                var clips = lis.map(function() { return $(this).data("clip"); }).get();
+                self.presenter.deleteClips(clips, function(clip)
+                {
+                    lis.filter(function() { return $(this).data("clip") === clip; }).remove();
+                    self.clipCount--;
+                },
+                function(errors)
+                {
+                    button.removeClass("busy");
+                    self.updateTools();
+                    if(errors.length) self.showError({message: "Some clips weren't deleted: " + errors[0].message});
+                    if(self.settle) self.settle();
                 });
             },
             enumerable: false
@@ -157,6 +219,7 @@
                             created_at: value.created_at,
                             name: value.device_name || value.camera_name,  // newer API: device_name
                             network_id: value.network_id,
+                            cloudId: value.id,
                             thumbnail: value.thumbnail + "_s.jpg",
                             play: function(onUrl, onError)
                             {
@@ -188,6 +251,11 @@
                 var later = $("ul.activity li").filter(function() { return +$(this).attr("data-time") < time.valueOf(); }).first();
                 if(later.length) li.insertBefore(later); else li.appendTo($("ul.activity"));
                 li.toggleClass("filtered", !self.shows(li));
+                li.data("clip", clip);
+                $("<input/>", {type: "checkbox", class: "pick", title: "Select"}).appendTo(li)
+                    .click(function(evt) { evt.stopPropagation(); })  // don't also play it
+                    .change(function() { self.updateTools(); });
+                self.updateTools();
 
                 var label = $("<div/>", {class: "timeVideo", html: time.fromNow() + (clip.name ? "<br>" + $("<span/>").text(clip.name).html() : "")});
                 var showThumbnail = function(css)

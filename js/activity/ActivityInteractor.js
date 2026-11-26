@@ -123,6 +123,45 @@
             },
             enumerable: false
         },
+        // A POST that changes something (body: JSON, or none); the reply isn't needed.
+        post : {
+            value: function(path, body, onSuccess, onError)
+            {
+				$.ajax
+				({
+					type: "POST",
+					url: "https://rest-" + credentials.region + "." + server + path,
+					data: body === undefined ? undefined : JSON.stringify(body),
+					contentType: body === undefined ? undefined : "application/json",
+					dataType: "text",
+					beforeSend: function(xhr) {
+						xhr.setRequestHeader("Authorization", "Bearer " + credentials.token);
+					},
+					success: function () { onSuccess(); },
+					error: function (jqxhr, textStatus, error)
+					{
+						onError({message: "Delete failed (" + jqxhr.status + (error ? " " + error : "") + ")"});
+					}
+				});
+            },
+            enumerable: false
+        },
+        // Cloud clips, by their media ids (BlinkMonitorProtocol: POST .../media/delete).
+        deleteCloudMedia : {
+            value: function(ids, onSuccess, onError)
+            {
+				this.post("/api/v1/accounts/" + credentials.account.id + "/media/delete", {media_list: ids}, onSuccess, onError);
+            },
+            enumerable: false
+        },
+        // A clip on Sync Module local storage (blinkpy's delete_video: the clip URL, "request" -> "delete").
+        deleteLocalClip : {
+            value: function(network, sync, manifest, clip, onSuccess, onError)
+            {
+				this.post(this.localStoragePath(network, sync) + "/manifest/" + manifest + "/clip/delete/" + clip, undefined, onSuccess, onError);
+            },
+            enumerable: false
+        },
         localStoragePath : {
             value: function(network, sync)
             {
