@@ -233,13 +233,26 @@
                         return {left: Math.round(r.left - grid.offset().left - parseFloat(grid.css("padding-left"))), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height)};
                     }).get();
                     report.sliderValue = Number($("#camera_slider").val());
+                    var cardWidth = function() { return Math.round($(".demo-card-square")[0].getBoundingClientRect().width); };
                     $("#camera_slider").val(420).change();
-                    report.widthAfterSlider = Math.round($(".demo-card-square")[0].getBoundingClientRect().width);
+                    report.widthAfterSlider = cardWidth();
                     $(window).trigger("resize");
                     setTimeout(function()
                     {
-                        report.widthAfterResize = Math.round($(".demo-card-square")[0].getBoundingClientRect().width);
-                        finish();
+                        report.widthAfterResize = cardWidth();
+                        var slider = $("#camera_slider");
+                        report.sliderMax = Number(slider.attr("max"));
+                        slider.val(slider.attr("max")).change();
+                        report.widthAtSliderEnd = cardWidth();
+                        report.gridWidthAtSliderEnd = $("#networkContainer .cameraContainer").width();
+                        // Narrow the content as a smaller window would.
+                        $(".layout > .content").css("width", "400px");
+                        setTimeout(function()
+                        {
+                            report.widthNarrowed = cardWidth();
+                            report.gridWidthNarrowed = $("#networkContainer .cameraContainer").width();
+                            finish();
+                        }, 300);
                     }, 300);
                 }, 500);
             });

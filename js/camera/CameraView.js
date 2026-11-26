@@ -63,8 +63,7 @@
                 self.getThumbnail(card, data);
                 
                 card.appendTo($("#networkContainer").find(".cameraContainer"));
-                if(self.cardWidth) self.sizeCards(self.cardWidth);
-                else self.fitCards();
+                self.fitCards();
                 
                 componentHandler.upgradeDom();
             },
@@ -80,21 +79,24 @@
             },
             enumerable: false
         },
-        // Until the slider is moved, fit the cards two across the content (one if two
-        // would be narrower than 320px), again whenever its width changes.
+        // Size the cards to the content, again whenever its width changes: until the slider
+        // is moved, two across (one if two would be narrower than 320px); after, the
+        // slider's size. Never wider than the content; the slider's far end is that width.
         fitCards : {
             value: function()
             {
                 var grid = $("#networkContainer .cameraContainer");
-                if(self.cardWidth || !grid.length) return;
+                if(!grid.length) return;
                 var gap = 10;  // each card's margin-right
                 var avail = grid.width();
-                var columns = avail >= 2 * (320 + gap) ? 2 : 1;
-                var width = Math.floor(avail / columns - gap);
+                var full = Math.floor(avail - gap);
+                var width = self.cardWidth ? Math.min(self.cardWidth, full)
+                          : Math.floor(avail / (avail >= 2 * (320 + gap) ? 2 : 1) - gap);
                 self.sizeCards(width);
+                // Steps of 50 from 320: the last one at or past full, which then means full.
                 var slider = $("#camera_slider");
-                slider.attr("max", Math.max(800, Math.ceil(width / 50) * 50));
-                if(slider[0] && slider[0].MaterialSlider) slider[0].MaterialSlider.change(width);
+                slider.attr("max", 320 + Math.max(0, Math.ceil((full - 320) / 50)) * 50);
+                if(!self.cardWidth && slider[0] && slider[0].MaterialSlider) slider[0].MaterialSlider.change(width);
             },
             enumerable: false
         },
@@ -225,8 +227,8 @@
                 sizer.appendTo($(".content"));
                 slider.change(function()
                 {
-                    self.cardWidth = Number($(this).val());  // chosen: stop fitting
-                    self.sizeCards(self.cardWidth);
+                    self.cardWidth = Number($(this).val());  // chosen: stop fitting two across
+                    self.fitCards();
                 });
                 
                 componentHandler.upgradeDom();

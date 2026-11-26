@@ -177,6 +177,11 @@ class ActivityTest(unittest.TestCase):
         self.assertLessEqual(abs(r["sliderValue"] - a["width"]), 25)  # nearest 50px step
         # Once the slider is moved, its size sticks.
         self.assertEqual((r["widthAfterSlider"], r["widthAfterResize"]), (420, 420))
+        # Its far end is one card the width of the content, never wider: also when the
+        # content narrows afterwards.
+        self.assertEqual(r["widthAtSliderEnd"], r["gridWidthAtSliderEnd"] - 10)
+        self.assertEqual(r["widthNarrowed"], r["gridWidthNarrowed"] - 10)
+        self.assertLess(r["widthNarrowed"], 420)
 
     def test_one_card_across_a_narrow_window(self):
         r = self.run_activity("empty", action="cameras", size="500,800")
