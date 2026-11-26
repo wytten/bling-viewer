@@ -68,10 +68,11 @@
                 var user = this.interactor.getLastUser();
                 if(user) this.loginView.prefillUser(user);
                 // The proxy also remembers it (for incognito windows, which lose localStorage),
-                // except when it is public, where it keeps no email and remembers no computer.
+                // except when it is public, where it keeps no email and remembers the device
+                // in this browser instead of on the server.
                 this.interactor.getLastLogin(function(data)
                 {
-                    if(data && data.public) self.loginView.hideRemember();
+                    if(data && data.public) self.loginView.rememberInBrowser();
                     else if(data && data.email && !user) self.loginView.prefillUser(data.email);
                 });
             },

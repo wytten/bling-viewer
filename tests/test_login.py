@@ -188,6 +188,7 @@ class LoginTest(unittest.TestCase):
         self.config = tempfile.mkdtemp(prefix="bling-login-test-")
         bp.REMEMBER_DIR = os.path.join(self.config, "bling-viewer")
 
+        self.set_cookies = []
         bp.Handler.log_message = lambda *a: None
         self.proxy = ThreadingHTTPServer(("127.0.0.1", 0), partial(bp.Handler, directory=ROOT))
         self.base = f"http://127.0.0.1:{self.proxy.server_address[1]}"
@@ -201,14 +202,24 @@ class LoginTest(unittest.TestCase):
             setattr(bp, k, v)
         shutil.rmtree(self.config, ignore_errors=True)
 
-    def post(self, path, body):
-        req = urllib.request.Request(self.base + path, data=json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json"})
+    browser_cookie = None  # the page's DEVICE_COOKIE, kept like a browser would
+
+    def post(self, path, body, headers=None):
+        headers = dict(headers or {}, **{"Content-Type": "application/json"})
+        if self.browser_cookie:
+            headers["Cookie"] = self.browser_cookie
+        req = urllib.request.Request(self.base + path, data=json.dumps(body).encode(), headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
-                return r.status, json.loads(r.read())
+                status, resp_headers, body = r.status, r.headers, r.read()
         except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
+            with e:
+                status, resp_headers, body = e.code, e.headers, e.read()
+        self.set_cookies.extend(resp_headers.get_all("Set-Cookie") or [])
+        for c in resp_headers.get_all("Set-Cookie") or []:
+            pair = c.split(";", 1)[0]
+            self.browser_cookie = None if "Max-Age=0" in c else pair
+        return status, json.loads(body)
 
     def login(self, email=EMAIL, password=PASSWORD, pin=PIN, remember=False, hardware_id=None):
         """Log in like the page does; returns (tokens, asked_for_pin)."""
@@ -345,14 +356,65 @@ class LoginTest(unittest.TestCase):
         os.remove(os.path.join(bp.REMEMBER_DIR, "last-login.json"))  # e.g. remembered before last-login existed
         self.assertEqual(self.get("/auth/last-login"), {"email": EMAIL})
 
-    def test_public_keeps_no_email_and_remembers_no_computer(self):
+    def test_public_keeps_no_email_and_remembers_in_the_browser(self):
         bp.PUBLIC = True
-        _, asked = self.login(remember=True)
+        first, asked = self.login(remember=True)
         self.assertTrue(asked)
-        _, asked = self.login(remember=True)
-        self.assertTrue(asked, "PIN skipped on a public proxy")
         self.assertEqual(self.get("/auth/last-login"), {"public": True})
         self.assertFalse(os.path.exists(bp.REMEMBER_DIR), "something saved on a public proxy")
+        cookie = self.set_cookies[-1]
+        for attr in ("HttpOnly", "Secure", "SameSite=Strict", "Path=/auth/"):
+            self.assertIn(attr, cookie)
+        self.assertNotIn("sess", self.browser_cookie.split("=", 1)[1])
+
+        # The same browser skips the PIN, with the same device, even without its localStorage.
+        second, asked = self.login()
+        self.assertFalse(asked, "PIN asked in the browser that ticked the box")
+        self.assertEqual(second["hardware_id"], first["hardware_id"])
+        _, asked = self.login()
+        self.assertFalse(asked, "cookie not refreshed")
+
+        # Any other browser still needs the PIN.
+        self.browser_cookie = None
+        _, asked = self.login()
+        self.assertTrue(asked, "PIN skipped for another browser on a public proxy")
+
+    def test_public_cookie_path_follows_the_prefix(self):
+        bp.PUBLIC = True
+        status, r = self.post("/auth/login", {"email": EMAIL, "password": PASSWORD},
+                              {"X-Forwarded-Prefix": "/blink"})
+        self.post("/auth/verify", {"session": r["session"], "pin": PIN, "remember": True},
+                  {"X-Forwarded-Prefix": "/blink"})
+        self.assertIn("Path=/blink/auth/", self.set_cookies[-1])
+
+    def test_public_unticking_after_remember_fails_clears_the_cookie(self):
+        bp.PUBLIC = True
+        self.login(remember=True)
+        self.blink.remember_tokens.clear()  # Blink stops honouring the cookie
+        _, asked = self.login(remember=False)
+        self.assertTrue(asked)
+        self.assertIsNone(self.browser_cookie)
+        self.assertIn("Max-Age=0", self.set_cookies[-1])
+
+    def test_public_cookie_is_per_email(self):
+        bp.PUBLIC = True
+        self.login(remember=True)
+        status, _ = self.post("/auth/login", {"email": "other@example.com", "password": PASSWORD})
+        self.assertEqual(status, 401)
+        self.assertEqual(self.blink.pins_asked, 1)
+
+    def test_public_ignores_a_mangled_cookie(self):
+        bp.PUBLIC = True
+        for junk in ("bling-device=%%%", "bling-device=" + base64.urlsafe_b64encode(
+                b'{"email": "user@example.com", "cookies": [{"name": 1}]}').decode()):
+            self.browser_cookie = junk
+            _, asked = self.login()
+            self.assertTrue(asked)
+
+    def test_private_sets_no_browser_cookie(self):
+        self.login(remember=True)
+        self.login()
+        self.assertEqual(self.set_cookies, [])
 
     def test_public_ignores_a_device_remembered_before(self):
         self.login(remember=True)

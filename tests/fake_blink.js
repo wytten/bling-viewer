@@ -188,6 +188,7 @@
         report.focused = document.activeElement && document.activeElement.id;
         report.loginOpen = $("#login").prop("open");
         report.rememberHidden = $("#login .remember").closest("label")[0].style.display == "none";
+        report.rememberLabel = $("#login .remember").closest("label").find(".mdl-checkbox__label").text();
         var pre = document.createElement("pre");
         pre.id = "test-result";
         pre.textContent = JSON.stringify(report);
@@ -198,8 +199,8 @@
     {
         if(mode == "login")
         {
-            // Done when the email is filled in, or (public, nothing saved here) remember is hidden.
-            waitFor(function() { return $("#userInput").val() || $("#login .remember").closest("label")[0].style.display == "none"; },
+            // Done when the email is filled in, or (public, nothing saved here) remember is relabelled.
+            waitFor(function() { return $("#userInput").val() || /browser/.test($("#login .remember").closest("label").text()); },
                     function() { setTimeout(finish, 300); }, 60);
             return;
         }

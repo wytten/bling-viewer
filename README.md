@@ -58,9 +58,12 @@ Blink. Serve it over HTTPS.
 
 If anyone can reach it, run the proxy with `BLING_PUBLIC=1`. Otherwise it would fill in the last
 email that signed in for every visitor, and its remembered device cookies would let a correct
-password skip the 2FA PIN. Public, it saves neither and the page hides **Don't ask again on this
-computer**, so Blink's own sign-in, with its PIN, is the only login. Either way the page also
-remembers the last email itself, in the browser's `localStorage`.
+password skip the 2FA PIN from any browser. Public, it saves neither: the box reads **Don't ask
+again in this browser**, and ticking it hands Blink's device cookies and the device ID back to
+that browser, in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie (`bling-device`) sent only to
+the proxy's `/auth/`. Only that browser can then skip the PIN; every other one gets Blink's
+sign-in with its PIN. Either way the page also remembers the last email itself, in the browser's
+`localStorage`.
 
 The drawer shows the short git commit the viewer is running from (`GET /version`). A copy deployed
 without `.git` can provide it in a `VERSION` file.
@@ -93,7 +96,9 @@ device, and the proxy saves the device's ID and Blink's long-lived device cookie
 session or CSRF cookies) in
 `~/.config/bling-viewer/` (owner-only; `BLING_REMEMBER_DIR` overrides). Later logins with the same
 email reuse them, so Blink can skip the PIN even from a fresh incognito window. Delete that directory
-to forget the computer; entering a PIN with the box unticked also forgets it.
+to forget the computer; entering a PIN with the box unticked also forgets it. (With
+`BLING_PUBLIC=1` they're kept in the browser instead; see above. Clearing the site's cookies
+forgets it there.)
 
 The proxy also remembers the last email that signed in (`last-login.json` in the same directory) and
 fills it into the login form.

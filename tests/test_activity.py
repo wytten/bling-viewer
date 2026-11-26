@@ -138,6 +138,7 @@ class ActivityTest(unittest.TestCase):
         self.assertTrue(r["userLabelFloats"], "label overlaps the prefilled name")
         self.assertEqual(r["focused"], "passwordInput")
         self.assertFalse(r["rememberHidden"])
+        self.assertEqual(r["rememberLabel"], "Don't ask again on this computer")
 
     def test_login_form_prefers_this_browsers_last_login(self):
         r = self.run_activity("empty", mode="login", extra="&lastuser=me@example.com")
@@ -145,14 +146,15 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual(r["userValue"], "me@example.com")
         self.assertTrue(r["userLabelFloats"])
 
-    def test_public_proxy_hides_remember(self):
+    def test_public_proxy_remembers_in_the_browser(self):
         r = self.run_activity("empty", mode="login", extra="&proxy=public")
         self.assertEqual(r["errors"], [])
         self.assertEqual(r["userValue"], "")
-        self.assertTrue(r["rememberHidden"])
+        self.assertFalse(r["rememberHidden"])
+        self.assertEqual(r["rememberLabel"], "Don't ask again in this browser")
         r = self.run_activity("empty", mode="login", extra="&proxy=public&lastuser=me@example.com")
         self.assertEqual(r["userValue"], "me@example.com")
-        self.assertTrue(r["rememberHidden"])
+        self.assertFalse(r["rememberHidden"])
 
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")

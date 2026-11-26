@@ -13,7 +13,8 @@ the browser, so it is done here behind three local JSON endpoints:
 
 With remember, Blink's long-lived login cookies and the device's hardware_id are saved
 under ~/.config/bling-viewer/ (BLING_REMEMBER_DIR overrides) so later logins with the
-same email can skip the 2FA pin.
+same email can skip the 2FA pin. With BLING_PUBLIC=1 they go back to the browser instead,
+in an HttpOnly cookie sent only to /auth/, so only that browser skips the pin.
   POST /auth/refresh  {refresh_token, hardware_id}    -> tokens
   GET  /auth/last-login                               -> {email} of the last sign-in, or {}
                                                          ({public: true} with BLING_PUBLIC=1)
@@ -32,8 +33,9 @@ POST /live/stop {camera_id} ends it; streams also stop when the player goes idle
 Behind a reverse proxy the viewer can live under a path (e.g. /blink/): its URLs are
 relative to the page, and the proxy prefixes relayed redirects with X-Forwarded-Prefix.
 
-BLING_PUBLIC=1 is for a proxy anyone can reach: it saves no email and no remembered
-computer, so every new sign-in needs Blink's 2FA pin.
+BLING_PUBLIC=1 is for a proxy anyone can reach: it saves no email, and a remembered
+device lives only in the cookie of the browser that ticked the box, so every other
+browser's sign-in needs Blink's 2FA pin.
 
 Usage: bling-proxy.py [port]   (default 3000, listens on 127.0.0.1)
        BLING_PROXY_DEBUG=1 bling-proxy.py   also logs small JSON response bodies, and
@@ -70,7 +72,8 @@ ALLOWED_HOST = re.compile(r"(^|\.)immedia-semi\.com$")
 
 DROP_REQUEST = {"host", "origin", "referer", "connection", "accept-encoding",
                 "content-length", "keep-alive", "upgrade", "te",
-                "authorization", "x-blink-authorization"}  # see Handler.relay
+                "authorization", "x-blink-authorization",  # see Handler.relay
+                "cookie"}  # the page's own (DEVICE_COOKIE), never Blink's
 DROP_RESPONSE = {"connection", "transfer-encoding", "keep-alive", "content-length",
                  "content-encoding", "upgrade"}
 
@@ -113,10 +116,13 @@ PENDING_TTL = 600  # seconds a login may wait for its 2FA pin
 # kept by the proxy (the browser may be incognito) so later logins can skip the 2FA pin.
 REMEMBER_DIR = os.environ.get("BLING_REMEMBER_DIR") or os.path.join(
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "bling-viewer")
-# Public (BLING_PUBLIC=1, for a proxy anyone can reach): keep no email and remember no
-# computer, so neither the last sign-in nor a 2FA bypass is there for any visitor.
-# The page keeps the last email itself, in localStorage.
+# Public (BLING_PUBLIC=1, for a proxy anyone can reach): keep no email and save no device,
+# so neither the last sign-in nor a 2FA bypass is there for every visitor. The page keeps
+# the last email itself, in localStorage, and a remembered device is kept by the browser
+# that asked for it, in DEVICE_COOKIE.
 PUBLIC = os.environ.get("BLING_PUBLIC") == "1"
+DEVICE_COOKIE = "bling-device"
+DEVICE_COOKIE_MAX = 3800  # bytes; browsers drop cookies over about 4 KB
 pending = {}       # session id -> OAuthLogin awaiting 2FA
 pending_lock = threading.Lock()
 
@@ -233,20 +239,73 @@ def _remember_paths():
     return os.path.join(REMEMBER_DIR, "device.json"), os.path.join(REMEMBER_DIR, "cookies.lwp")
 
 
-def remembered_device(email):
-    """The saved device for this email, or None."""
+class Browser:
+    """The browser making an /auth/ request: the device it remembers (public proxy only) and
+    the DEVICE_COOKIE to send back, if any ("" clears it)."""
+
+    def __init__(self, cookie_header=None, path="/auth/"):
+        self.path = path
+        self.set_device = None
+        self.device = None
+        for part in (cookie_header or "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == DEVICE_COOKIE and value:
+                try:
+                    device = json.loads(base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)))
+                except ValueError:
+                    continue
+                if isinstance(device, dict) and isinstance(device.get("cookies"), list):
+                    self.device = device
+
+    def set_cookie_header(self):
+        if self.set_device is None:
+            return None
+        attrs = f"Path={self.path}; HttpOnly; Secure; SameSite=Strict"
+        if not self.set_device:
+            return f"{DEVICE_COOKIE}=; Max-Age=0; {attrs}"
+        return f"{DEVICE_COOKIE}={self.set_device}; Max-Age=31536000; {attrs}"
+
+
+def _saved_cookies(jar):
+    """Blink's persistent device cookies in jar, as plain dicts."""
+    return [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path,
+             "secure": c.secure, "expires": c.expires}
+            for c in jar if not c.discard and not SESSION_COOKIE.search(c.name)]
+
+
+def _load_cookies(jar, saved):
+    for d in saved:
+        try:
+            domain = str(d["domain"])
+            jar.set_cookie(http.cookiejar.Cookie(
+                0, str(d["name"]), str(d["value"]), None, False, domain, True,
+                domain.startswith("."), str(d["path"]), True, bool(d["secure"]),
+                int(d["expires"]) if d.get("expires") else None, False, None, None, {}))
+        except (KeyError, TypeError, ValueError):
+            continue  # a mangled cookie is just not sent
+
+
+def remembered_device(email, browser=None):
+    """The saved device for this email, or None. Public: the one in browser's cookie."""
     if PUBLIC:
+        device = browser.device if browser else None
+    else:
+        device_file, _ = _remember_paths()
+        try:
+            with open(device_file) as f:
+                device = json.load(f)
+        except (OSError, ValueError):
+            return None
+    if not isinstance(device, dict) or str(device.get("email", "")).lower() != email.lower():
         return None
-    device_file, _ = _remember_paths()
-    try:
-        with open(device_file) as f:
-            device = json.load(f)
-    except (OSError, ValueError):
-        return None
-    return device if device.get("email", "").lower() == email.lower() else None
+    return device
 
 
-def forget_device():
+def forget_device(browser=None):
+    if PUBLIC:
+        if browser and browser.device:
+            browser.set_device = ""
+        return
     for path in _remember_paths():
         try:
             os.remove(path)
@@ -257,21 +316,23 @@ def forget_device():
 class OAuthLogin:
     """One Authorization Code + PKCE login, with its own cookie jar."""
 
-    def __init__(self, email, hardware_id=None, use_cookies=True):
+    def __init__(self, email, hardware_id=None, use_cookies=True, browser=None):
         self.email = email
         self.jar = http.cookiejar.LWPCookieJar()
-        self.remembered = remembered_device(email)
+        self.remembered = remembered_device(email, browser)
         self.used_cookies = False
         if self.remembered:
             hardware_id = self.remembered.get("hardware_id")
-            if use_cookies:
+            if use_cookies and PUBLIC:
+                _load_cookies(self.jar, self.remembered["cookies"])
+            elif use_cookies:
                 try:
                     self.jar.load(_remember_paths()[1])
                 except (OSError, http.cookiejar.LoadError):
                     pass
-                for c in [c for c in self.jar if SESSION_COOKIE.search(c.name)]:
-                    self.jar.clear(c.domain, c.path, c.name)  # files saved before this filter existed
-                self.used_cookies = len(self.jar) > 0
+            for c in [c for c in self.jar if SESSION_COOKIE.search(c.name)]:
+                self.jar.clear(c.domain, c.path, c.name)  # files saved before this filter existed
+            self.used_cookies = len(self.jar) > 0
         try:
             self.hardware_id = str(uuid.UUID(hardware_id)).upper()
         except (TypeError, ValueError):
@@ -284,9 +345,21 @@ class OAuthLogin:
         self.csrf = None
         self.created = time.time()
 
-    def remember(self):
-        """Save hardware_id and Blink's persistent cookies (owner-only files)."""
+    def remember(self, browser=None):
+        """Save hardware_id and Blink's persistent cookies (owner-only files; public: in
+        browser's cookie)."""
         if PUBLIC:
+            if browser is None:
+                return
+            value = base64.urlsafe_b64encode(json.dumps({
+                "email": self.email, "hardware_id": self.hardware_id,
+                "cookies": _saved_cookies(self.jar)}, separators=(",", ":")).encode()).decode().rstrip("=")
+            if len(value) > DEVICE_COOKIE_MAX:
+                print(f"Blink's device cookies are too big to remember ({len(value)} bytes)",
+                      file=sys.stderr)
+                forget_device(browser)
+                return
+            browser.set_device = value
             return
         os.makedirs(REMEMBER_DIR, mode=0o700, exist_ok=True)
         device_file, cookie_file = _remember_paths()
@@ -306,8 +379,9 @@ class OAuthLogin:
         return {"User-Agent": BROWSER_UA, "Accept": "*/*", "Origin": OAUTH_BASE,
                 "Referer": OAUTH_SIGNIN, "Content-Type": "application/x-www-form-urlencoded"}
 
-    def start(self, password):
+    def start(self, password, browser=None):
         """Return tokens, or None if a 2FA pin is needed."""
+        self.browser = browser
         params = urlencode({
             "app_brand": "blink", "app_version": "50.1", "client_id": OAUTH_CLIENT_ID,
             "code_challenge": self.challenge, "code_challenge_method": "S256",
@@ -335,7 +409,7 @@ class OAuthLogin:
         if status in (200, 201, 301, 302, 303, 307, 308):
             tokens = self.finish()
             if self.remembered:
-                self.remember()  # keep Blink's refreshed cookies
+                self.remember(self.browser)  # keep Blink's refreshed cookies
             return tokens
         if status == 412 or (status == 202 and (resp.get("tsv_state") or resp.get("tsv_methods")
                                                  or resp.get("next_time_in_secs"))):
@@ -343,7 +417,7 @@ class OAuthLogin:
         raise ApiError(resp.get("message") or resp.get("error_description")
                        or f"Blink rejected the sign-in ({status}); check email and password")
 
-    def verify(self, pin, remember=False):
+    def verify(self, pin, remember=False, browser=None):
         status, _, body = fetch(self.follow, OAUTH_2FA_VERIFY, {
             "2fa_code": pin, "csrf-token": self.csrf, "remember_me": "true" if remember else "false"},
             self._form_headers())
@@ -351,9 +425,9 @@ class OAuthLogin:
             raise ApiError(as_json(body).get("message") or "Invalid pin")
         tokens = self.finish()
         if remember:
-            self.remember()
+            self.remember(browser)
         elif self.remembered:
-            forget_device()  # remembering didn't spare this pin and the box was unticked
+            forget_device(browser)  # remembering didn't spare this pin and the box was unticked
         return tokens
 
     def finish(self):
@@ -416,20 +490,20 @@ def auth_last_login(req=None):
     return {"email": email} if email else {}
 
 
-def auth_login(req):
+def auth_login(req, browser=None):
     if not req.get("email") or not req.get("password"):
         raise ApiError("Email and password are required", 400)
     email = req["email"].strip()
-    login = OAuthLogin(email, req.get("hardware_id"))
+    login = OAuthLogin(email, req.get("hardware_id"), browser=browser)
     try:
-        tokens = login.start(req["password"])
+        tokens = login.start(req["password"], browser)
     except ApiError:
         if not login.used_cookies:
             raise
         # Remembered cookies must never lock anyone out: retry once without them.
         print("Sign-in with remembered cookies failed; retrying without them", file=sys.stderr)
-        login = OAuthLogin(email, req.get("hardware_id"), use_cookies=False)
-        tokens = login.start(req["password"])
+        login = OAuthLogin(email, req.get("hardware_id"), use_cookies=False, browser=browser)
+        tokens = login.start(req["password"], browser)
     if tokens:
         save_last_login(email)
         return tokens
@@ -442,12 +516,12 @@ def auth_login(req):
     return {"2fa_required": True, "session": sid}
 
 
-def auth_verify(req):
+def auth_verify(req, browser=None):
     with pending_lock:
         login = pending.get(req.get("session"))
     if not login or time.time() - login.created > PENDING_TTL:
         raise ApiError("Login expired, sign in again")
-    tokens = login.verify(str(req.get("pin", "")).strip(), bool(req.get("remember")))
+    tokens = login.verify(str(req.get("pin", "")).strip(), bool(req.get("remember")), browser)
     save_last_login(login.email)
     with pending_lock:
         pending.pop(req.get("session"), None)
@@ -465,6 +539,7 @@ def auth_refresh(req):
 
 AUTH_ROUTES = {"/auth/login": auth_login, "/auth/verify": auth_verify,
                "/auth/refresh": auth_refresh}
+BROWSER_ROUTES = {auth_login, auth_verify}  # these also get the request's Browser
 
 
 # --- Live view: Blink "immis" stream -> ffmpeg -> HLS (mirrors blinkpy livestream.py) ---
@@ -740,9 +815,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     def json_route(self, fn):
         length = int(self.headers.get("Content-Length") or 0)
+        browser = Browser(self.headers.get("Cookie"), self.prefix() + "/auth/")
         try:
             req = json.loads(self.rfile.read(length) or b"{}")
-            status, result = 200, fn(req)
+            status, result = 200, fn(req, browser) if fn in BROWSER_ROUTES else fn(req)
         except ValueError:
             status, result = 400, {"message": "Bad JSON"}
         except ApiError as e:
@@ -752,6 +828,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
+        if browser.set_cookie_header():
+            self.send_header("Set-Cookie", browser.set_cookie_header())
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)

@@ -56,15 +56,17 @@
             },
             enumerable: false
         },
-		// Fill in the last login name (unless something was typed already) and go to the password.
-		hideRemember : {
+		// A public proxy remembers the device in this browser's cookie, not on the server.
+		rememberInBrowser : {
             value: function()
             {
-                var box = $("#login .remember").prop("checked", false);
-                box.closest("label").hide();
+                var label = $("#login .remember").closest("label");
+                label.attr("title", "Keeps Blink's login cookies in this browser so its next login can skip this step");
+                label.find(".mdl-checkbox__label").text("Don't ask again in this browser");
             },
             enumerable: false
         },
+		// Fill in the last login name (unless something was typed already) and go to the password.
 		prefillUser : {
             value: function(email)
             {
@@ -80,7 +82,6 @@
 		onVerificationRequired : {
             value: function(data)
             {
-				$("#login form.verify").find("span.email").html(data.user);
 				$("#login form.login").hide();
 				$("#login form.verify").show();
             },
