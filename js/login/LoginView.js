@@ -33,6 +33,12 @@
                         evt.preventDefault();
                     });
                     
+                    $("#signout").click(function(evt)
+                    {
+                        self.presenter.signOut();
+                        evt.preventDefault();
+                    });
+
                     componentHandler.upgradeAllRegistered();
                     
                     self.presenter.checkToken();
@@ -50,6 +56,7 @@
                 
                 $(".avatar-dropdown > span").html(data.email);
                 $("#login")[0].close();
+                $("#signout").show();
                 
                 var dashboard = $("<a/>", {id: "dashboard", class: "link selected", href: "#", title: "Cameras", html: "<i class='fas fa-home'></i>"});
                 dashboard.appendTo($(".drawer .navigation"));

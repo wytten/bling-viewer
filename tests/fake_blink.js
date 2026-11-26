@@ -5,7 +5,8 @@
 {
     var params = new URLSearchParams(location.search);
     var fixtureName = params.get("fixture") || "empty";
-    var action = params.get("action");  // "download": click every local clip's download icon
+    var action = params.get("action");  // "download": click every local clip's download icon;
+                                        // "signout": click Sign out, then report the login form
     var mode = params.get("mode");      // "login": no saved session; check the login form
     var proxy = params.get("proxy");    // "public": bling-proxy.py run with BLING_PUBLIC=1
     var lastUser = params.get("lastuser");  // the email this browser last signed in with
@@ -104,7 +105,13 @@
     ];
 
     if(lastUser) localStorage.setItem("bling.lastUser", lastUser);
-    if(mode == "login") localStorage.removeItem("bling.token");
+    if(action == "signout" && sessionStorage.getItem("bling.test.signedOut"))
+    {
+        mode = "login";  // the reload after Sign out: keep what it left
+        report.signedOut = true;
+        report.tokenAfterSignOut = JSON.parse(localStorage.getItem("bling.token"));
+    }
+    else if(mode == "login") localStorage.removeItem("bling.token");
     else localStorage.setItem("bling.token", JSON.stringify({
         user: "test@example.com", access_token: "test-token", refresh_token: "test-refresh",
         hardware_id: "00000000-0000-0000-0000-000000000000", tier: "u000", account_id: 1,
@@ -187,6 +194,7 @@
         report.userLabelFloats = $("#userInput").closest(".mdl-textfield").hasClass("is-dirty");
         report.focused = document.activeElement && document.activeElement.id;
         report.loginOpen = $("#login").prop("open");
+        report.signoutShown = $("#signout").css("display") != "none";
         report.rememberHidden = $("#login .remember").closest("label")[0].style.display == "none";
         report.rememberLabel = $("#login .remember").closest("label").find(".mdl-checkbox__label").text();
         var pre = document.createElement("pre");
@@ -217,6 +225,13 @@
                        ($(".videoContainer video").length || $(".content p.empty").length || report.toasts.length);
             }, function()
             {
+                if(action == "signout")
+                {
+                    if(!$("#signout").is(":visible")) { report.errors.push("Sign out not shown"); finish(); return; }
+                    sessionStorage.setItem("bling.test.signedOut", "1");
+                    $("#signout").click();  // reloads the page
+                    return;
+                }
                 if(action != "download") { setTimeout(finish, 300); return; }
                 report.requestsBeforeDownload = report.requests.length;
                 var icons = $(".videoThumbnail.local .download");

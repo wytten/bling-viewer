@@ -156,6 +156,15 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual(r["userValue"], "me@example.com")
         self.assertFalse(r["rememberHidden"])
 
+    def test_sign_out_drops_the_session_but_keeps_the_device(self):
+        r = self.run_activity("clips", action="signout")
+        self.assertEqual(r["errors"], [])
+        self.assertTrue(r.get("signedOut"), "page not reloaded after Sign out")
+        self.assertEqual(r["tokenAfterSignOut"], {"hardware_id": "00000000-0000-0000-0000-000000000000"})
+        self.assertTrue(r["loginOpen"])
+        self.assertFalse(r["signoutShown"])
+        self.assertEqual(r["userValue"], "test@example.com")
+
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")
         self.assertEqual(r["errors"], [])

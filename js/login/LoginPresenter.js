@@ -142,6 +142,19 @@
             },
             enumerable: false
         },
+        // Drop the session and start over at the login form. The device ID is kept, and so
+        // is a remembered device (the proxy's, or this browser's cookie), so Blink may let
+        // the next sign-in skip its PIN.
+        signOut : {
+            value: function()
+            {
+                var stored = this.interactor.getToken();
+                clearTimeout(this.refreshTimer);
+                this.interactor.setToken(stored && stored.hardware_id ? {hardware_id: stored.hardware_id} : null);
+                location.reload();
+            },
+            enumerable: false
+        },
         checkToken : {
             value: function()
             {
