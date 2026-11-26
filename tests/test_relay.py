@@ -142,6 +142,16 @@ class RelayTest(unittest.TestCase):
         self.assertEqual((status, body), (200, b"abc1234"))
         self.assertEqual(headers["Cache-Control"], "no-store")
 
+    def test_viewer_files_are_revalidated(self):
+        status, headers, _ = self.get("/index.html")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Cache-Control"], "no-cache")
+        status, headers, _ = self.get("/index.html", {"If-Modified-Since": headers["Last-Modified"]})
+        self.assertEqual(status, 304)
+        self.assertEqual(headers["Cache-Control"], "no-cache")
+        _, headers, _ = self.get("/version")
+        self.assertEqual(headers.get_all("Cache-Control"), ["no-store"])
+
     def test_version_from_git(self):
         status, _, body = self.get("/version")
         self.assertEqual(status, 200)

@@ -746,7 +746,17 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
 
+    # The viewer's own files: the browser may keep them but must check they're current
+    # (a 304 if so), so a page reloaded after publishing runs what /version says.
+    static = False
+
+    def end_headers(self):
+        if self.static:
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def do_GET(self):
+        self.static = False
         if self._is_relay():
             self.relay()
         elif self.path == "/auth/last-login":
@@ -756,9 +766,11 @@ class Handler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/live/"):
             self.live_file()
         else:
+            self.static = True
             super().do_GET()
 
     def do_HEAD(self):
+        self.static = not self._is_relay()
         self.relay() if self._is_relay() else super().do_HEAD()
 
     def prefix(self):
