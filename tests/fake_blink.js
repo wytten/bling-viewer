@@ -7,7 +7,8 @@
     var fixtureName = params.get("fixture") || "empty";
     var action = params.get("action");  // "download": click every local clip's download icon;
                                         // "signout": click Sign out, then report the login form;
-                                        // "cameras": stay on the cameras and report their cards
+                                        // "cameras": stay on the cameras and report their cards;
+                                        // "locations": on Activity, click each location tab
     var mode = params.get("mode");      // "login": no saved session; check the login form
     var proxy = params.get("proxy");    // "public": bling-proxy.py run with BLING_PUBLIC=1
     var lastUser = params.get("lastuser");  // the email this browser last signed in with
@@ -49,7 +50,11 @@
         localbusy: {cloud: noCloud, local: "busy"},       // module busy: manifest not ready on first fetch
         localempty: {cloud: noCloud, local: "empty"},
         localfail: {cloud: noCloud, local: "fail"},       // manifest command fails
-        mixed: {cloud: {media: [clip(101, 5, "Front door"), clip(103, 120, "Laundry")]}, local: "clips"}
+        mixed: {cloud: {media: [clip(101, 5, "Front door"), clip(103, 120, "Laundry")]}, local: "clips"},
+        // Two locations; the third ("Barn") has no clips.
+        locations: {cloud: {media: [clip(101, 5, "Front door"), $.extend(clip(201, 20, "Dock"), {network_id: 2, network_name: "Cabin"}),
+                                    clip(103, 120, "Laundry")]}, local: "clips",
+                    networks: [{network_id: 1, name: "Home"}, {network_id: 2, name: "Cabin"}, {network_id: 3, name: "Barn"}]}
     };
     var fixture = fixtures[fixtureName];
     var mediaPage1 = fixture.cloud;
@@ -60,8 +65,9 @@
 
     var routes = [
         [/\/user$/, {email: "test@example.com", temp_units: "f"}],
-        [/\/api\/v1\/camera\/usage$/, {networks: [{network_id: 1, name: "Home",
+        [/\/api\/v1\/camera\/usage$/, {networks: fixture.networks || [{network_id: 1, name: "Home",
             cameras: [{id: 10, name: "Front door"}, {id: 11, name: "Laundry"}]}]}],
+        [/\/network\/[23]$/, {devicestatus: []}],
         [/\/api\/v3\/accounts\/1\/homescreen$/, {cameras: [{id: 10, name: "Front door", type: "catalina", serial: "A1"},
             {id: 11, name: "Laundry", type: "catalina", serial: "A2"}], owls: [], doorbells: [],
             sync_modules: fixture.local ? [
@@ -257,6 +263,27 @@
                     if(!$("#signout").is(":visible")) { report.errors.push("Sign out not shown"); finish(); return; }
                     sessionStorage.setItem("bling.test.signedOut", "1");
                     $("#signout").click();  // reloads the page
+                    return;
+                }
+                if(action == "locations")
+                {
+                    report.tabs = $(".activityPage .tabs li").map(function() { return $(this).text(); }).get();
+                    var shown = function() { return $("ul.activity li").not(".filtered").map(function() { return $(this).attr("title").split(" – ")[0]; }).get(); };
+                    report.locations = {};
+                    var tabs = $(".activityPage .tabs li");
+                    var next = function(i)
+                    {
+                        if(i >= tabs.length) { finish(); return; }
+                        tabs.eq(i).click();
+                        setTimeout(function()
+                        {
+                            report.locations[tabs.eq(i).text()] = {
+                                clips: shown(), selected: $("ul.activity li.selected").not(".filtered").attr("title") || null,
+                                message: $.trim($(".content p.empty").text())};
+                            next(i + 1);
+                        }, 300);
+                    };
+                    setTimeout(function() { next(1); }, 300);
                     return;
                 }
                 if(action != "download") { setTimeout(finish, 300); return; }

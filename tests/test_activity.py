@@ -185,6 +185,21 @@ class ActivityTest(unittest.TestCase):
         self.assertLess(a["top"], b["top"])
         self.assertGreater(a["width"] + 10, r["gridWidth"] - 4)
 
+    def test_location_tabs_filter_the_clips(self):
+        r = self.run_activity("locations", action="locations")
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["tabs"], ["All", "Home", "Cabin", "Barn"])
+        home, cabin, barn = (r["locations"][n] for n in ("Home", "Cabin", "Barn"))
+        # Home: its cloud clips and its Sync Module's (network 1) local clips, newest first.
+        self.assertEqual(home["clips"], ["Front door", "Laundry", "Front door", "Laundry"])
+        self.assertTrue(home["selected"])
+        self.assertEqual(cabin["clips"], ["Dock"])
+        self.assertTrue(cabin["selected"].startswith("Dock"))
+        self.assertEqual(barn["clips"], [])
+        self.assertIsNone(barn["selected"])
+        self.assertEqual(barn["message"], "No clips for Barn.")
+        self.assertEqual(r["items"], 5)  # all still listed, only hidden
+
     def test_busy_sync_module_is_retried(self):
         r = self.run_activity("localbusy")
         self.assertEqual(r["errors"], [])

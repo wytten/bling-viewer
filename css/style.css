@@ -131,6 +131,36 @@
       float:left;
   }
 
+  /* Activity: the location tabs above the clip column and the video. */
+  .content .activityPage
+  {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+  }
+
+  .content .activityPage > .tabs
+  {
+      flex: none;
+  }
+
+  .content .activityBody
+  {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+  }
+
+  .content .activityBody > .tableContainer
+  {
+      height: auto;
+  }
+
+  .content ul.activity li.filtered
+  {
+      display: none;
+  }
+
     .content .tableContainer, .content .videoContainer .mdl-progress
   {
       width:100%;

@@ -21,6 +21,7 @@
                 this.networkInteractor.getNetworks(new blink.listeners.BaseDecisionListener(
                     function(data)
                     {
+                        var networks = data.networks;
                         var numNetworks = data.networks.length;
                         var i = 0;
                         
@@ -38,7 +39,7 @@
                                 
                                 if(i >= numNetworks)
                                 {
-                                    self.activityView.onCameras(cameras);
+                                    self.activityView.onCameras(cameras, networks);
                                 }
                             },
                             function(data)
@@ -106,6 +107,7 @@
                                 return {
                                     created_at: c.created_at,
                                     name: names[c.camera_name] || c.camera_name,
+                                    network_id: m.network_id,
                                     local: true,
                                     play: function(onUrl, onError)
                                     {

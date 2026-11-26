@@ -36,41 +36,83 @@
             enumerable: false
         },
         onCameras : {
-            value: function(data)
+            value: function(data, networks)
             {
-                this.initTable(data);
+                this.initTable(data, networks || []);
             },
             enumerable: false
         },
         initTable : {
-            value: function(cameras)
+            value: function(cameras, networks)
             {
-                $(".content").html("<div class='tableContainer'><ul class='activity display' width='100%'></ul></div>" +
-                                    "<div class='videoContainer'></div>");
+                $(".content").html("<div class='activityPage'><ul class='tabs'></ul><div class='activityBody'>" +
+                                    "<div class='tableContainer'><ul class='activity display' width='100%'></ul></div>" +
+                                    "<div class='videoContainer'></div></div></div>");
                 
                 this.cameras = cameras;
                 this.clipCount = 0;
+                this.network = null;  // the location (network_id) shown; null: all
                 var sources = 2;  // cloud page 1 and Sync Module local storage
                 var page = 1;
                 var cloudMore = true;
+                var loading = false;
 
                 // In the (white) video area: the clip column has a black background.
                 $(".videoContainer").html("<p class='empty'>Loading clips…</p>");
 
-                var sourceDone = function()
+                // The locations, as on the cameras page: All, then one tab per network.
+                var tabs = $(".activityPage .tabs");
+                var tab = function(label, network)
                 {
-                    if(--sources > 0) return;
-                    if(self.clipCount == 0)
+                    $("<li/>", {text: label, class: network === null ? "active" : ""}).click(function()
                     {
-                        $(".videoContainer").html("<p class='empty'>No clips found in Blink's cloud storage or on a Sync Module.</p>");
+                        $(this).addClass("active").siblings().removeClass("active");
+                        self.network = network;
+                        $("ul.activity li").each(function() { $(this).toggleClass("filtered", !self.shows(this)); });
+                        settle();
+                    }).appendTo(tabs);
+                };
+                tab("All", null);
+                $.each(networks, function(i, n) { tab(n.name, n.network_id); });
+
+                var more = function()
+                {
+                    if(!cloudMore || loading) return;
+                    loading = true;
+                    page++;
+                    self.loadVideos(page, function(m) { cloudMore = m; loading = false; settle(); });
+                };
+
+                // Once both sources have answered: keep a clip of the shown location selected,
+                // and fetch more cloud clips while the list doesn't fill its column.
+                var settle = function()
+                {
+                    if(sources > 0) return;
+                    var shown = $("ul.activity li").not(".filtered");
+                    var box = $(".tableContainer")[0];
+                    if(box && box.scrollHeight <= box.clientHeight + 1) more();
+                    if(!shown.length)
+                    {
+                        $("ul.activity li.selected").removeClass("selected");
+                        var name = tabs.find("li.active").text();
+                        $(".videoContainer").html($("<p class='empty'/>").text(
+                            loading ? "Loading clips…" :
+                            self.clipCount == 0 ? "No clips found in Blink's cloud storage or on a Sync Module." :
+                            "No clips for " + name + "."));
                     }
-                    else if(!$("ul.activity li.selected").length)
+                    else if(!shown.filter(".selected").length)
                     {
-                        $("ul.activity li").first().trigger("click");
+                        shown.first().trigger("click");
                     }
                 };
 
-                self.loadVideos(page, function(more) { cloudMore = more; sourceDone(); });
+                var sourceDone = function()
+                {
+                    --sources;
+                    settle();
+                };
+
+                self.loadVideos(page, function(m) { cloudMore = m; sourceDone(); });
 
                 self.presenter.getLocalClips(function(clips)
                 {
@@ -79,12 +121,19 @@
                 
                 $(".tableContainer").scroll(function()
                 {
-                    if(cloudMore && Math.round($(this)[0].scrollHeight - $(this).scrollTop()) === Math.round($(this).outerHeight()))
+                    if(Math.round($(this)[0].scrollHeight - $(this).scrollTop()) === Math.round($(this).outerHeight()))
                     {
-                        page++;
-                        self.loadVideos(page, function(more) { cloudMore = more; });
+                        more();
                     }
                 });
+            },
+            enumerable: false
+        },
+        // Whether a clip's <li> belongs to the location shown.
+        shows : {
+            value: function(li)
+            {
+                return self.network === null || +$(li).attr("data-network") === +self.network;
             },
             enumerable: false
         },
@@ -107,6 +156,7 @@
                         self.addClip({
                             created_at: value.created_at,
                             name: value.device_name || value.camera_name,  // newer API: device_name
+                            network_id: value.network_id,
                             thumbnail: value.thumbnail + "_s.jpg",
                             play: function(onUrl, onError)
                             {
@@ -131,12 +181,13 @@
                 self.clipCount++;
 
                 var time = moment(clip.created_at);
-                var li = $("<li/>", {"data-time": time.valueOf(), title: (clip.name || "") + " – " + time.format("lll") +
+                var li = $("<li/>", {"data-time": time.valueOf(), "data-network": clip.network_id, title: (clip.name || "") + " – " + time.format("lll") +
                                      (clip.local ? " (Sync Module local storage)" : ""),
                                      html: '<div class="thumbnail"><div class="loadingContainer"><div class="mdl-spinner mdl-spinner--single-color mdl-js-spinner is-active"></div></div></div>'});
 
                 var later = $("ul.activity li").filter(function() { return +$(this).attr("data-time") < time.valueOf(); }).first();
                 if(later.length) li.insertBefore(later); else li.appendTo($("ul.activity"));
+                li.toggleClass("filtered", !self.shows(li));
 
                 var label = $("<div/>", {class: "timeVideo", html: time.fromNow() + (clip.name ? "<br>" + $("<span/>").text(clip.name).html() : "")});
                 var showThumbnail = function(css)
